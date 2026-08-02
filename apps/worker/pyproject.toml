@@ -1,0 +1,25 @@
+[project]
+name = "founderblaze-worker"
+version = "0.1.0"
+description = "FounderBlaze Temporal Python worker"
+requires-python = ">=3.11"
+dependencies = [
+  "founderblaze",
+  "temporalio>=1.11",
+]
+
+[project.scripts]
+founderblaze-worker = "founderblaze_worker.main:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/founderblaze_worker"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src/founderblaze_worker" = "founderblaze_worker"
+
+[tool.uv.sources]
+founderblaze = { workspace = true }
