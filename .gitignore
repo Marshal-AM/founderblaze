@@ -1,0 +1,25 @@
+node_modules/
+dist/
+.next/
+.turbo/
+.env
+.env.local
+.pnpm-store/
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.log
+.DS_Store
+coverage/
+.tmp/
+.playwright/
+artifacts/
+tmp/
+*.tsbuildinfo
+services/outreach-service/output/
+# Local Genblaze SDK checkout — not published with the repo
+reference/
+
+scripts/active-proxy.txt
+

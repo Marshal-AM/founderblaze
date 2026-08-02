@@ -1,0 +1,17 @@
+[project]
+name = "founderblaze-workspace"
+version = "0.1.0"
+description = "FounderBlaze — A2MCP agent services on Genblaze + Backblaze"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.uv.workspace]
+members = [
+  "packages/founderblaze",
+  "apps/api",
+  "apps/worker",
+  "apps/agent",
+]
+
+[tool.uv]
+package = false

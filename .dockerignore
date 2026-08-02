@@ -1,0 +1,27 @@
+# Keep build context small for Railway / docker build
+.git
+.github
+.cursor
+**/node_modules
+**/dist
+**/.turbo
+**/.cache
+.env
+.env.*
+!.env.example
+tmp
+tmp/**
+*.md
+!docs/runbooks/railway-deploy.md
+graphify-out
+**/playwright-report
+**/test-results
+scripts
+tests
+infra/ci
+infra/k8s
+infra/terraform
+apps/cost-worker
+apps/ops-dashboard
+services/_service-template
+services/social-post-service
