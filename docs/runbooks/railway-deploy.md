@@ -1,111 +1,213 @@
-# Railway deploy (FounderForge)
+# Railway deploy (FounderBlaze)
 
-You need **4 pieces**: Railway Postgres (jobs) · Temporal · api-gateway · orchestrator.  
-Supabase + vendor API keys stay external. Redis is unused — skip it.
+Full stack on Railway with **self-hosted Temporal**.
 
-## Exactly what to do for Temporal
+You need **7 services**:
 
-Jobs Postgres ≠ Temporal. Temporal needs its own server (and usually its own DB). Pick **one**:
+| # | Service | Builder | Public? |
+|---|---------|---------|---------|
+| 1 | `postgres` | Railway Postgres plugin | — |
+| 2 | `postgres-temporal` | Railway Postgres plugin | — |
+| 3 | `temporal` | [`infra/temporal/Dockerfile`](../../infra/temporal/Dockerfile) | **no** |
+| 4 | `api` | [`apps/api/Dockerfile`](../../apps/api/Dockerfile) | **yes** |
+| 5 | `worker` | [`apps/worker/Dockerfile`](../../apps/worker/Dockerfile) | **no** |
+| 6 | `agent` | [`apps/agent/Dockerfile`](../../apps/agent/Dockerfile) | **no** (private OK) |
+| 7 | `chat` | [`apps/chat/Dockerfile`](../../apps/chat/Dockerfile) | **yes** |
 
-### Option A — Temporal Cloud (simplest ops) ✅ recommended
+Build context for all app Dockerfiles is the **repo root**.  
+Genblaze path deps under `reference/` are gitignored — images use `uv sync --no-sources` (PyPI).
 
-1. Sign up at [cloud.temporal.io](https://cloud.temporal.io), create a namespace.
-2. Create an **API key**.
-3. Copy the gRPC address (e.g. `us-west-2.aws.api.temporal.io:7233`) and full namespace id (`name.account`).
-4. Set on **both** `api-gateway` and `orchestrator`:
-
-```bash
-TEMPORAL_ADDRESS=<region>.aws.api.temporal.io:7233
-TEMPORAL_NAMESPACE=<namespace>.<account>
-TEMPORAL_API_KEY=<api-key>
-TEMPORAL_TLS=true
-TEMPORAL_TASK_QUEUE=founderforge
+```text
+User → chat (public)
+         └─ AGENT_URL → agent (private)
+                           └─ FOUNDERBLAZE_A2MCP_BASE_URL → api (public or private)
+                                                              ├─ DATABASE_URL → postgres
+                                                              └─ TEMPORAL_ADDRESS → temporal
+worker ← TEMPORAL + DATABASE_URL + vendor keys
+temporal → postgres-temporal
 ```
 
-No Temporal container on Railway. App code already supports API key + TLS via `@founderforge/temporal`.
+---
 
-### Option B — Self-host Temporal on Railway
+## 1. Postgres (jobs + chat)
 
-1. Add a **second** Railway Postgres dedicated to Temporal (recommended), or use a separate DB name on the jobs instance.
-2. New Railway service → Dockerfile path `infra/temporal/Dockerfile` (image `temporalio/auto-setup:1.25.2`).
-3. Private networking only (no public HTTP). Temporal must be in the **same Railway project** as that Postgres so `*.railway.internal` resolves.
-4. Parse the Postgres URL into **discrete** env vars — do **not** put the full URL in `POSTGRES_SEEDS`.
+Add a Railway **Postgres** plugin named `postgres`.
 
-Example URL:
+Wire on **api**, **worker**, and **chat**:
+
+```bash
+DATABASE_URL=${{postgres.DATABASE_URL}}
+```
+
+Jobs tables (`jobs`, …) and Auth.js / chat history tables share this database (no name collisions).
+
+---
+
+## 2. Self-host Temporal
+
+### 2a. Temporal Postgres
+
+Add a **second** Postgres plugin: `postgres-temporal`.  
+Do **not** reuse the jobs database.
+
+### 2b. Temporal server
+
+New empty service → Dockerfile path `infra/temporal/Dockerfile`, context = repo root.  
+Private networking only (no public HTTP). Same Railway project/environment as `postgres-temporal`.
+
+Parse `postgres-temporal`’s `DATABASE_URL` into **discrete** vars — never put the full URL in `POSTGRES_SEEDS`.
+
+Example URL:  
 `postgresql://USER:PASSWORD@HOST:5432/railway`
 
 ```bash
 DB=postgres12
 DB_PORT=5432
-# ⚠️ DB_PORT defaults to 3306 in auto-setup — you MUST set 5432 or it loops forever
+# ⚠️ DB_PORT defaults to 3306 in auto-setup — you MUST set 5432
 POSTGRES_USER=USER
 POSTGRES_PWD=PASSWORD
 POSTGRES_SEEDS=HOST
-# host only, e.g. postgres-xxxx.railway.internal  — NO postgresql://, NO user, NO path
+# host only, e.g. postgres-temporal.railway.internal
 ```
 
-If it still loops on `Waiting for PostgreSQL to startup`:
-- `POSTGRES_SEEDS` is wrong (full URL pasted, typo, or different Railway environment)
-- `DB_PORT` missing / still 3306
-- Temporal service not on the same private network as Postgres
+If it loops on `Waiting for PostgreSQL to startup`:
 
-After TCP connects, if schema setup fails with SSL errors, add:
+- `POSTGRES_SEEDS` is a full URL / wrong host / wrong environment
+- `DB_PORT` missing (still 3306)
+- Temporal not on the same private network as Postgres
+
+If TCP connects but SSL fails:
+
 ```bash
 POSTGRES_TLS_ENABLED=true
 POSTGRES_TLS_DISABLE_HOST_VERIFICATION=true
 ```
 
-Temporal will create DBs `temporal` + `temporal_visibility` (needs CREATE privilege — Railway’s default `postgres` user is fine).
+Temporal creates DBs `temporal` + `temporal_visibility` (Railway’s default user can CREATE).
 
-5. On **api-gateway** + **orchestrator**:
+### 2c. App Temporal env (api + worker)
 
 ```bash
 TEMPORAL_ADDRESS=<temporal-service>.railway.internal:7233
 TEMPORAL_NAMESPACE=default
-TEMPORAL_TASK_QUEUE=founderforge
-# leave TEMPORAL_API_KEY unset
+TEMPORAL_TASK_QUEUE=founderblaze
+# leave TEMPORAL_API_KEY and TEMPORAL_TLS unset for private auto-setup
 ```
 
-6. Deploy Temporal **before** (or with) the apps so workers can connect.
+Deploy Temporal **before** (or with) api/worker so workers can connect.
 
 ---
 
-## Railway services checklist
+## 3. api
 
-| # | Service | Dockerfile | Public? |
-|---|---------|------------|---------|
-| 1 | Postgres (jobs) | plugin | — |
-| 2 | Temporal | `infra/temporal/Dockerfile` **or** Temporal Cloud | private / SaaS |
-| 3 | api-gateway | `apps/api-gateway/Dockerfile` | **yes** |
-| 4 | orchestrator | `apps/orchestrator/Dockerfile` | **no** |
-
-### api-gateway
-
-- Builder: Dockerfile at `apps/api-gateway/Dockerfile` (context = repo root).
-- Health: `GET /health` (includes Temporal probe + oldest queued age).
-- Env: `DATABASE_URL` (jobs Postgres), `TEMPORAL_*`, `PORT`, `PUBLIC_API_BASE_URL`.
-
-### orchestrator
-
-- Builder: Dockerfile at `apps/orchestrator/Dockerfile` (Debian + Playwright Chromium).
-- Env: same `DATABASE_URL` + `TEMPORAL_*`, plus `SUPABASE_*` and all feature API keys from `env.example`.
-- Give it enough memory (Playwright / ffmpeg / long activities).
-
-### Shared
+- Dockerfile: `apps/api/Dockerfile` (context = repo root)
+- Generate a public domain
+- Health: `GET /health`
 
 ```bash
-DATABASE_URL=${{Postgres.DATABASE_URL}}   # jobs DB — gateway + worker
-TEMPORAL_TASK_QUEUE=founderforge          # must match on gateway + worker
+PORT=${{PORT}}
+DATABASE_URL=${{postgres.DATABASE_URL}}
+TEMPORAL_ADDRESS=<temporal>.railway.internal:7233
+TEMPORAL_NAMESPACE=default
+TEMPORAL_TASK_QUEUE=founderblaze
+PUBLIC_API_BASE_URL=https://<api-public-host>
 ```
+
+---
+
+## 4. worker
+
+- Dockerfile: `apps/worker/Dockerfile` (Debian + ffmpeg + Playwright Chromium)
+- **No** public networking
+- Give it **≥2 GB RAM** (Chromium + ffmpeg + long activities)
+
+Same `DATABASE_URL` + `TEMPORAL_*` as api, plus all vendor keys from [`env.example`](../../env.example):
+
+```bash
+GEMINI_API_KEY=...
+GEMINI_TEXT_MODEL=gemini-2.5-flash
+GEMINI_IMAGE_MODEL=gemini-2.5-flash-image
+B2_KEY_ID=...
+B2_APP_KEY=...
+B2_BUCKET=...
+B2_REGION=...
+B2_PUBLIC_URL_BASE=   # empty for private bucket + presigned URLs
+LMNT_API_KEY=...
+FIRECRAWL_API_KEY=...
+EXA_SEARCH_API_KEY=...
+TAVILY_API_KEY=...
+SEGMIND_API_KEY=...
+SERPER_API_KEY=...   # or BRAVE_SEARCH_API_KEY
+# optional: JINA_API_KEY, etc.
+```
+
+Playwright browsers are installed **in the image** (`PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`). No host `playwright install` needed on Railway.
+
+---
+
+## 5. agent
+
+- Dockerfile: `apps/agent/Dockerfile`
+- Prefer **private** (chat proxies via server-side `AGENT_URL`)
+- Listens on Railway `PORT` when `AGENT_PORT` is unset
+
+```bash
+PORT=${{PORT}}
+FOUNDERBLAZE_A2MCP_BASE_URL=http://api.railway.internal:8080
+AGENT_CORS_ORIGINS=https://<chat-public-host>
+GEMINI_API_KEY=...
+AGENT_GEMINI_MODEL=gemini-3.1-pro-preview
+GEMINI_TEXT_MODEL=gemini-2.5-flash
+```
+
+Health: `GET /health`
+
+> Railway injects `PORT` (often `8080`). Prefer hardcoding `http://api.railway.internal:<api-PORT>` — nested `${{api.PORT}}` references inside a URL string can resolve empty.
+
+---
+
+## 6. chat
+
+- Dockerfile: `apps/chat/Dockerfile` (Next.js standalone)
+- Public domain
+- Binds Railway `PORT` via standalone `server.js`
+
+```bash
+PORT=${{PORT}}
+DATABASE_URL=${{postgres.DATABASE_URL}}
+AGENT_URL=http://agent.railway.internal:8080
+AUTH_SECRET=<random-32+-bytes>
+AUTH_URL=https://<chat-public-host>
+# optional Google OAuth — redirect URI = https://<chat>/api/auth/callback/google
+AUTH_GOOGLE_ID=...
+AUTH_GOOGLE_SECRET=...
+```
+
+Do **not** put vendor API keys on chat; it only talks to the agent BFF.
 
 ---
 
 ## Local Docker smoke (optional)
 
 ```bash
-# from repo root
-docker build -f apps/api-gateway/Dockerfile -t ff-gateway .
-docker build -f apps/orchestrator/Dockerfile -t ff-orchestrator .
+# from repo root (linux/amd64 images match Railway)
+docker build -f apps/api/Dockerfile -t founderblaze-api .
+docker build -f apps/agent/Dockerfile -t founderblaze-agent .
+docker build -f apps/worker/Dockerfile -t founderblaze-worker .
+docker build -f apps/chat/Dockerfile -t founderblaze-chat .
+```
+
+On Apple Silicon Macs, force amd64 if you want Railway parity:
+
+```bash
+docker build --platform linux/amd64 -f apps/worker/Dockerfile -t founderblaze-worker .
+```
+
+Local (non-Docker) Mac still needs:
+
+```bash
+source .venv/bin/activate
+playwright install chromium
 ```
 
 ---
@@ -113,11 +215,29 @@ docker build -f apps/orchestrator/Dockerfile -t ff-orchestrator .
 ## Verify
 
 ```bash
-curl -s https://YOUR_GATEWAY/health
-curl -i -X POST https://YOUR_GATEWAY/v1/services/competitor-research/jobs \
-  -H 'content-type: application/json' \
-  -d '{"input":{"product_name":"Linear","product_url":"https://linear.app"}}'
-# expect 202 + job_id
+curl -s https://YOUR_API_HOST/health
+curl -s https://YOUR_CHAT_HOST/   # HTML shell
 ```
 
-If create returns `202` but job stays `queued`, Temporal address / worker / task queue is wrong.
+From the chat UI, run **Social Listening** or **Product Demo**.  
+If create returns a job but it stays `queued`, Temporal address / worker / task queue is wrong.  
+If the job fails with missing Chromium, the worker image was built without `playwright install` (rebuild `apps/worker/Dockerfile`).
+
+---
+
+## CLI sketch
+
+```bash
+# install once: https://docs.railway.com/guides/cli
+railway login
+railway link   # or railway init
+
+# After services exist and env is set:
+railway up --service api --dockerfile apps/api/Dockerfile
+railway up --service worker --dockerfile apps/worker/Dockerfile
+railway up --service agent --dockerfile apps/agent/Dockerfile
+railway up --service chat --dockerfile apps/chat/Dockerfile
+railway up --service temporal --dockerfile infra/temporal/Dockerfile
+```
+
+Exact `railway` flags vary by CLI version; prefer the Railway dashboard Dockerfile path + root directory settings if `up` differs.
