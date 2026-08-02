@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from founderblaze.a2mcp.client import A2MCPClient
 from founderblaze.a2mcp.tools import list_service_tools
 from founderblaze.agent.runner import run_agent
 from founderblaze.core.config import get_settings
@@ -25,6 +26,8 @@ _LAST: dict[str, dict[str, Any]] = {}
 class AgentRunRequest(BaseModel):
     message: str = Field(min_length=1)
     session_id: str | None = None
+    # Chat UI sets False so it can poll live job steps via /v1/agent/jobs/{id}.
+    wait_for_jobs: bool = True
 
 
 @asynccontextmanager
@@ -88,6 +91,7 @@ async def agent_run(body: AgentRunRequest) -> dict[str, Any]:
             body.message,
             session_id=body.session_id,
             history=history,
+            wait_for_jobs=body.wait_for_jobs,
         )
     except Exception as exc:  # noqa: BLE001
         log.exception("agent run failed")
@@ -100,6 +104,25 @@ async def agent_run(body: AgentRunRequest) -> dict[str, Any]:
     _SESSIONS[sid] = hist[-20:]
     _LAST[sid] = result
     return result
+
+
+@app.get("/v1/agent/jobs/{job_id}")
+async def agent_job(job_id: str) -> dict[str, Any]:
+    """CORS-friendly proxy to A2MCP GET /v1/jobs/{id} for the chat UI."""
+    settings = get_settings()
+    client = A2MCPClient(settings.founderblaze_a2mcp_base_url)
+    try:
+        return await client.get_job(job_id)
+    except Exception as exc:  # noqa: BLE001
+        import httpx
+
+        if isinstance(exc, httpx.HTTPStatusError):
+            raise HTTPException(
+                status_code=exc.response.status_code,
+                detail=exc.response.text[:800],
+            ) from exc
+        log.warning("job proxy failed id=%s err=%s", job_id, exc)
+        raise HTTPException(status_code=502, detail=str(exc)[:800]) from exc
 
 
 @app.get("/v1/agent/sessions/{session_id}")
@@ -119,10 +142,15 @@ except Exception as _mcp_exc:  # noqa: BLE001
 def run() -> None:
     setup_logging()
     settings = get_settings()
+    # Railway injects PORT; prefer AGENT_PORT when set, else PORT, else default.
+    if os.environ.get("AGENT_PORT"):
+        port = settings.agent_port
+    else:
+        port = int(os.environ.get("PORT", settings.agent_port))
     uvicorn.run(
         "founderblaze_agent.main:app",
         host="0.0.0.0",
-        port=settings.agent_port,
+        port=port,
         reload=False,
     )
 
