@@ -2,10 +2,16 @@
 .git
 .github
 .cursor
+.venv
+.tmp
+reference
+**/__pycache__
+**/*.pyc
 **/node_modules
 **/dist
 **/.turbo
 **/.cache
+**/.next
 .env
 .env.*
 !.env.example
@@ -25,3 +31,4 @@ apps/cost-worker
 apps/ops-dashboard
 services/_service-template
 services/social-post-service
+apps/chat/.next
