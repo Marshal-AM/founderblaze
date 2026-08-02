@@ -11,6 +11,7 @@ from founderblaze.core.schemas.models import (
     BrandKitInput,
     CompetitorResearchInput,
     OutreachInput,
+    PitchDeckInput,
     PromoVideoInput,
     ServiceName,
     SocialListeningInput,
@@ -24,6 +25,7 @@ _INPUT_MODELS: dict[ServiceName, type[BaseModel]] = {
     ServiceName.PROMO_VIDEO: PromoVideoInput,
     ServiceName.COMPETITOR_RESEARCH: CompetitorResearchInput,
     ServiceName.APP_KIT: AppKitInput,
+    ServiceName.PITCH_DECK: PitchDeckInput,
 }
 
 

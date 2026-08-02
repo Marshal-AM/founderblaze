@@ -15,6 +15,7 @@ from founderblaze.core.schemas.models import Artifact, JobStatus
 from founderblaze.core.temporal_bridge import make_on_step_complete
 from founderblaze.outreach import run_outreach_pipeline
 from founderblaze.competitor_research import run_competitor_research_pipeline
+from founderblaze.pitch_deck import run_pitch_deck_pipeline
 from founderblaze.promo_video import run_promo_video_pipeline
 from founderblaze.social_listening import run_social_listening_pipeline
 
@@ -189,6 +190,64 @@ async def run_app_kit_activity(job_id: str) -> dict[str, Any]:
         )
     except Exception as exc:  # noqa: BLE001
         log.exception("app-kit pipeline failed job_id=%s", job_id)
+        await store.set_status(job_id, JobStatus.FAILED, error=str(exc)[:2000])
+        raise
+
+    artifacts = [Artifact.model_validate(a) for a in result.get("artifacts") or []]
+    await store.update(
+        job_id,
+        status=JobStatus.COMPLETED,
+        artifacts=artifacts,
+        error=None,
+        step="completed",
+    )
+    return result
+
+
+@activity.defn(name="run_pitch_deck_activity")
+async def run_pitch_deck_activity(job_id: str) -> dict[str, Any]:
+    settings = get_settings()
+    store = await get_job_store()
+    job = await store.get(job_id)
+    if not job:
+        raise RuntimeError(f"job not found: {job_id}")
+
+    await store.set_status(job_id, JobStatus.RUNNING, error=None)
+    await store.set_step(job_id, "starting")
+
+    product_url = str(job.input.get("product_url") or "").strip()
+    funding_ask = str(job.input.get("funding_ask") or "").strip()
+    if not product_url or not funding_ask:
+        await store.set_status(
+            job_id, JobStatus.FAILED, error="missing product_url or funding_ask"
+        )
+        raise RuntimeError("invalid pitch-deck input")
+
+    loop = asyncio.get_running_loop()
+
+    def set_step(name: str) -> None:
+        fut = asyncio.run_coroutine_threadsafe(store.set_step(job_id, name), loop)
+        try:
+            fut.result(timeout=15)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("set_step failed: %s", exc)
+
+    on_step = make_on_step_complete(
+        set_step=set_step,
+        heartbeat=lambda label: activity.heartbeat(label),
+    )
+
+    try:
+        result = await asyncio.to_thread(
+            run_pitch_deck_pipeline,
+            job_id=job_id,
+            product_url=product_url,
+            funding_ask=funding_ask,
+            on_step_complete=on_step,
+            settings=settings,
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.exception("pitch-deck pipeline failed job_id=%s", job_id)
         await store.set_status(job_id, JobStatus.FAILED, error=str(exc)[:2000])
         raise
 

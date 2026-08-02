@@ -829,9 +829,9 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8" },
     { name = "opentelemetry-api", marker = "extra == 'dev'", specifier = ">=1.20,<2" },
     { name = "opentelemetry-api", marker = "extra == 'otel'", specifier = ">=1.20,<2" },
-    { name = "pillow", specifier = ">=10.0,<13" },
-    { name = "pyarrow", marker = "extra == 'dev'", specifier = ">=14.0,<26" },
-    { name = "pyarrow", marker = "extra == 'parquet'", specifier = ">=14.0,<26" },
+    { name = "pillow", specifier = ">=10.0,<12" },
+    { name = "pyarrow", marker = "extra == 'dev'", specifier = ">=14.0,<23" },
+    { name = "pyarrow", marker = "extra == 'parquet'", specifier = ">=14.0,<23" },
     { name = "pydantic", specifier = ">=2.0,<3" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
     { name = "pytest", marker = "extra == 'testing'", specifier = ">=7.0" },
@@ -854,7 +854,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "genblaze-core", specifier = ">=0.3.8,<0.4" },
-    { name = "google-genai", specifier = ">=1.0,<3" },
+    { name = "google-genai", specifier = ">=1.0,<2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
 ]
 provides-extras = ["dev"]
@@ -889,7 +889,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "aioboto3", marker = "extra == 'async'", specifier = ">=12,<16" },
-    { name = "aiobotocore", marker = "extra == 'async'", specifier = ">=2.7,<4" },
+    { name = "aiobotocore", marker = "extra == 'async'", specifier = ">=2.7,<3" },
     { name = "boto3", specifier = ">=1.28,<2" },
     { name = "botocore", specifier = ">=1.31,<2" },
     { name = "genblaze-core", specifier = ">=0.3.4,<0.4" },

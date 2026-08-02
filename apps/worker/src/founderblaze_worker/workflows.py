@@ -12,6 +12,7 @@ with workflow.unsafe.imports_passed_through():
         run_brand_kit_activity,
         run_competitor_research_activity,
         run_outreach_activity,
+        run_pitch_deck_activity,
         run_promo_video_activity,
         run_social_listening_activity,
     )
@@ -101,6 +102,19 @@ class AppKitWorkflow:
     async def run(self, job_id: str) -> dict:
         return await workflow.execute_activity(
             run_app_kit_activity,
+            job_id,
+            start_to_close_timeout=timedelta(minutes=45),
+            heartbeat_timeout=timedelta(minutes=5),
+            retry_policy=RetryPolicy(maximum_attempts=2),
+        )
+
+
+@workflow.defn(name="PitchDeckWorkflow")
+class PitchDeckWorkflow:
+    @workflow.run
+    async def run(self, job_id: str) -> dict:
+        return await workflow.execute_activity(
+            run_pitch_deck_activity,
             job_id,
             start_to_close_timeout=timedelta(minutes=45),
             heartbeat_timeout=timedelta(minutes=5),

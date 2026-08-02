@@ -16,6 +16,7 @@ from founderblaze_worker.activities import (
     run_brand_kit_activity,
     run_competitor_research_activity,
     run_outreach_activity,
+    run_pitch_deck_activity,
     run_promo_video_activity,
     run_social_listening_activity,
 )
@@ -25,6 +26,7 @@ from founderblaze_worker.workflows import (
     BrandKitWorkflow,
     CompetitorResearchWorkflow,
     OutreachWorkflow,
+    PitchDeckWorkflow,
     PromoVideoWorkflow,
     SocialListeningWorkflow,
 )
@@ -60,6 +62,7 @@ async def async_main() -> None:
             PromoVideoWorkflow,
             CompetitorResearchWorkflow,
             AppKitWorkflow,
+            PitchDeckWorkflow,
         ],
         activities=[
             run_apd_activity,
@@ -69,6 +72,7 @@ async def async_main() -> None:
             run_promo_video_activity,
             run_competitor_research_activity,
             run_app_kit_activity,
+            run_pitch_deck_activity,
         ],
     )
     log.info(

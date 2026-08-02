@@ -15,6 +15,7 @@ class ServiceName(str, Enum):
     PROMO_VIDEO = "promo-video"
     COMPETITOR_RESEARCH = "competitor-research"
     APP_KIT = "app-kit"
+    PITCH_DECK = "pitch-deck"
 
 
 class JobStatus(str, Enum):
@@ -95,6 +96,11 @@ class AppKitInput(BaseModel):
     product_name: str = Field(min_length=1, max_length=80)
     product_idea: str = Field(min_length=10, max_length=4000)
     brand_kit_url: HttpUrl | None = None
+
+
+class PitchDeckInput(BaseModel):
+    product_url: HttpUrl
+    funding_ask: str = Field(min_length=1, max_length=200)
 
 
 class JobRecord(BaseModel):
@@ -294,6 +300,35 @@ SERVICE_MANIFESTS: dict[ServiceName, dict[str, Any]] = {
                 "type": "app_kit_zip",
                 "mime_type": "application/zip",
                 "description": "Desktop + mobile UI mock ZIP",
+            }
+        ],
+    },
+    ServiceName.PITCH_DECK: {
+        "name": ServiceName.PITCH_DECK.value,
+        "title": "Pitch Deck",
+        "a2mcp_price_usd": 1.49,
+        "sla_minutes": 25,
+        "endpoint_path": "/v1/services/pitch-deck/jobs",
+        "summary": (
+            "Researches a product URL, matches its design language, and generates "
+            "a 6–8 page investor pitch deck PDF (slide images compiled to PDF)."
+        ),
+        "provide": (
+            "product_url (required homepage/product URL) and funding_ask "
+            "(required free-text raise, e.g. \"$500K seed\")."
+        ),
+        "deliverable": "PDF pitch deck, 6–8 pages (Backblaze URL)",
+        "example_request": {
+            "input": {
+                "product_url": "https://www.notion.so",
+                "funding_ask": "$2M seed",
+            }
+        },
+        "example_artifacts": [
+            {
+                "type": "pitch_deck_pdf",
+                "mime_type": "application/pdf",
+                "description": "Investor pitch deck PDF (6–8 pages)",
             }
         ],
     },

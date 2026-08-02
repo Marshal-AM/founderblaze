@@ -23,6 +23,7 @@ from founderblaze.core.schemas.models import (
     JobStatus,
     CompetitorResearchInput,
     OutreachInput,
+    PitchDeckInput,
     PromoVideoInput,
     ServiceName,
     SocialListeningInput,
@@ -43,6 +44,7 @@ _WORKFLOWS: dict[ServiceName, tuple[str, str]] = {
         "competitor-research",
     ),
     ServiceName.APP_KIT: ("AppKitWorkflow", "app-kit"),
+    ServiceName.PITCH_DECK: ("PitchDeckWorkflow", "pitch-deck"),
 }
 
 
@@ -166,6 +168,8 @@ async def create_job(
             CompetitorResearchInput.model_validate(req.input)
         elif service_name == ServiceName.APP_KIT:
             AppKitInput.model_validate(req.input)
+        elif service_name == ServiceName.PITCH_DECK:
+            PitchDeckInput.model_validate(req.input)
     except ValidationError as exc:
         raise HTTPException(
             status_code=400,

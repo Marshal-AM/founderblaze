@@ -161,11 +161,12 @@ def pick_final_pdf_asset(result: Any) -> tuple[str, str | None]:
                 "pdf" in media
                 or url.endswith(".pdf")
                 or ".pdf?" in url
-                or kind
+                or                 kind
                 in (
                     "outreach_pdf",
                     "social_listening_pdf",
                     "competitor_research_pdf",
+                    "pitch_deck_pdf",
                 )
             ):
                 key = None
