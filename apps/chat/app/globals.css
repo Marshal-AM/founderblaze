@@ -727,27 +727,34 @@ a {
 }
 
 .chat-scroll.empty-mode {
-  display: block;
+  display: flex;
+  flex-direction: column;
   padding-top: 0.75rem;
 }
 
 .empty-start {
   width: 100%;
+  flex: 1;
+  min-height: 0;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 1.35rem;
+  gap: 0.5rem;
   padding: 0.25rem 0 1.5rem;
 }
 
 .empty-copy {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   text-align: center;
   gap: 0.85rem;
-  padding: 0 0.5rem;
+  /* Extra bottom padding pulls the visual center up from true middle */
+  padding: 1rem 0.5rem 18vh;
   width: min(560px, 100%);
   margin: 0 auto;
 }
