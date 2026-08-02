@@ -1,0 +1,41 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;1,9..40,400&family=IBM+Plex+Mono:wght@400;500&display=swap");
+
+:root {
+  --ink: #111827;
+  --muted: #5b6472;
+  --wash: #e8ecf1;
+  --panel: #f7f8fa;
+  --line: #d0d7e0;
+  --accent: #0f766e;
+  --user: #111827;
+  --agent: #f7f8fa;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  color: var(--ink);
+  background:
+    radial-gradient(80% 55% at 85% 0%, rgba(15, 118, 110, 0.09), transparent 50%),
+    linear-gradient(165deg, #f4f6f8 0%, var(--wash) 100%);
+  font-family: "DM Sans", "Segoe UI", sans-serif;
+}
+
+body {
+  display: flex;
+  min-height: 100%;
+}
+
+code {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.9em;
+}
+
+a {
+  color: var(--accent);
+}
