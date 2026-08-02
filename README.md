@@ -375,14 +375,28 @@ Promo Video takes nothing but your product URL and returns a polished MP4 genera
 
 ### Genblaze usage
 
-**Code:** [`run_promo_video_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L35)
+Promo Video is a **two-phase Genblaze execution**: a generation DAG that keeps the Seedance MP4 local, then a tiny emit/persist DAG whose only job is to hand that `file://` asset to Genblaze’s `ObjectStorageSink` (B2). Entry: [`run_promo_video_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L35).
 
-Promo Video is a **two-phase** Genblaze flow so Seedance’s local MP4 is the only file that hits object storage:
+**Phase 1 — generate (no sink)** — [`Pipeline("promo-video")`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L85) → [`.step` research](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L89) (`Modality.TEXT` [L96](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L96)) → [`.step` script](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L97) (`Modality.TEXT` [L106](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L106)) → [`.step` Seedance](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L108) (`Modality.VIDEO` [L116](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L116)) → [`.run`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L118) without a sink.
 
-1. `Pipeline("promo-video")` — Research (`TEXT`, Gemini via `genblaze_google`) → Script (`TEXT`) → Seedance (`VIDEO`) producing a local `file://` MP4.
-2. Follow-up emit pipeline (`promo-video-upload` / local variant) — `EmitFinalVideo` + `Pipeline.run(sink=build_b2_sink(service="promo-video"))`.
+**Phase 2 — emit to B2** — with upload: [`Pipeline("promo-video-upload")`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L127) → [`.step` EmitFinalVideo](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L132) (`Modality.VIDEO` [L135](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L135)) → [`.run(sink=…)`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L137). Local-only variant: [`Pipeline("promo-video-local")`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L145)–[`.run`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L155).
 
-Worker progress: [`make_on_step_complete`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/temporal_bridge.py#L9) maps Genblaze step events → job `step` + Temporal heartbeats from `run_promo_video_activity`.
+**SyncProviders (each is a Genblaze `SyncProvider` with `ProviderCapabilities`):**
+
+| Provider | Role | Links |
+|----------|------|-------|
+| `ProductResearchProvider` | Site research step | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/research_provider.py#L16), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/research_provider.py#L33) (`Modality.TEXT`) |
+| `ScriptProvider` | Creative script / shot list | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/script_provider.py#L16), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/script_provider.py#L41) |
+| `SeedanceProvider` | Segmind video gen as `Modality.VIDEO` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/seedance_provider.py#L28), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/seedance_provider.py#L57) |
+| `EmitFinalVideoProvider` | Re-emit final MP4 for sink upload | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/emit_provider.py#L13), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/emit_provider.py#L22) |
+| `PersistVideoProvider` | Persist helper provider | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/persist_provider.py#L15), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/persist_provider.py#L30) |
+| `ConcatVideoProvider` | Optional concat path | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/concat_provider.py#L15), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/concat_provider.py#L24) |
+
+**`genblaze_google` text calls** — [`from genblaze_google import chat`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/gemini_chat.py#L9); used at [`chat(...)` L33](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/gemini_chat.py#L33) and grounded [`chat(... tools=)` L65](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/gemini_chat.py#L65). Script step imports that helper via [`gemini_json`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/script_provider.py#L11).
+
+**Genblaze `Asset` helpers** — [`from genblaze_core import Asset`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/_assets.py#L9); constructors at [L26](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/_assets.py#L26) / [L42](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/_assets.py#L42).
+
+**After run** — [`pick_final_video_asset`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L161), [`finalize_run_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L175), [`merge_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L184). Sink built at [`build_b2_sink(service="promo-video")`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L78). Worker step events: [`make_on_step_complete`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/temporal_bridge.py#L9).
 
 ### Backblaze usage
 
@@ -788,17 +802,21 @@ This is not a screen recording you made manually. This is your product, on your 
 
 ### Genblaze usage
 
-**Code:** [`run_apd_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py#L28)
+APD is a **single three-step Genblaze DAG** that plans browser actions, records a screencast, then assembles a narrated MP4 and uploads it through Genblaze’s sink. Entry: [`run_apd_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py#L28) (docstring notes `ObjectStorageSink` at [L39](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py#L39)–[L41](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py#L41)).
 
-Single Genblaze DAG `Pipeline("apd")`:
+**Pipeline graph** — [`from genblaze_core import Modality, Pipeline, StepType`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py#L8); sink at [`build_b2_sink(service="automated-product-demo")`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py#L69); [`Pipeline("apd")`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py#L75) → [`.step` Plan](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py#L80) (`Modality.TEXT` [L88](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py#L88)) → [`.step` Record](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py#L90) (`Modality.VIDEO` [L97](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py#L97)) → [`.step` Assemble](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py#L100) (`Modality.VIDEO` [L106](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py#L106)) → [`.run(sink=…)`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py#L110).
 
-| Step | Modality | Role |
-|------|----------|------|
-| Plan | `TEXT` | Gemini plans atomic browser steps from URL + script |
-| Record | `VIDEO` | Firecrawl/Playwright session capture |
-| Assemble | `VIDEO` (mix) | LMNT narration (`genblaze_lmnt`) + ffmpeg mux → final MP4 |
+**SyncProviders:**
 
-`Pipeline.run(sink=build_b2_sink(service="automated-product-demo"), on_step_complete=…)` uploads through Genblaze’s `ObjectStorageSink`. Temporal bridge: same [`make_on_step_complete`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/temporal_bridge.py#L9) pattern from `run_apd_activity`.
+| Provider | Role | Links |
+|----------|------|-------|
+| `PlanProvider` | Gemini plan as `SyncProvider` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/plan_provider.py#L18), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/plan_provider.py#L35), [`Asset` emit L75](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/plan_provider.py#L75) |
+| `RecordProvider` | Firecrawl + Playwright CDP as Genblaze video step | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/record_provider.py#L17), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/record_provider.py#L34), [`Asset` L100](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/record_provider.py#L100) |
+| `AssembleProvider` | Narration + ffmpeg mux; sets Genblaze `StepType.MIX` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/assemble_provider.py#L17), [import `StepType`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/assemble_provider.py#L12), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/assemble_provider.py#L38), [`StepType.MIX` L149](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/assemble_provider.py#L149), [`Asset` L142](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/assemble_provider.py#L142) |
+
+**`genblaze_google`** — [`from genblaze_google import chat`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/plan_provider.py#L13); plan call [`chat(model, prompt=…)` L63](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/plan_provider.py#L63). (Narration uses the LMNT SDK directly inside `AssembleProvider`, not a Genblaze LMNT step wrapper.)
+
+**After run** — [`pick_final_video_asset` L120](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py#L120), [`finalize_run_provenance` L125](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py#L125), [`merge_provenance` L134](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py#L134). Temporal: [`make_on_step_complete`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/temporal_bridge.py#L9).
 
 ### Backblaze usage
 
@@ -1368,9 +1386,28 @@ This is not auto-posting. This is not spam automation. This is **intelligence** 
 
 ### Genblaze usage
 
-**Code:** [`run_social_listening_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L31)
+Social Listening is a **five-step Genblaze DAG**: product profile → thread discovery → draft/compliance → Gemini chart images → PDF compile, then sink upload. Entry: [`run_social_listening_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L31).
 
-Five-step Genblaze DAG `Pipeline("social-listening")`: ProductDiscover → ThreadDiscover → DraftCompliance → VisualInsights (`IMAGE`) → CompileReport (`TEXT`). Fan-in via `input_from` so the PDF compiler sees drafts + charts. `.run(sink=build_b2_sink(service="social-listening"), on_step_complete=…)` persists assets through Genblaze.
+**Pipeline graph** — [`from genblaze_core import Modality, Pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L8); sink [`build_b2_sink(service="social-listening")`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L63); [`Pipeline("social-listening")`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L72) → [ProductDiscover `.step` L77](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L77) (`TEXT` [L86](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L86)) → [ThreadDiscover L88](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L88) (`TEXT` [L91](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L91)) → [DraftCompliance L94](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L94) (`TEXT` [L97](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L97)) → [VisualInsights L100](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L100) (`IMAGE` [L107](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L107)) → [CompileReport L110](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L110) (`TEXT` [L113](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L113)) → [`.run(sink=…)` L116](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L116). Fan-in via `input_from` so compile sees drafts + charts.
+
+**SyncProviders:**
+
+| Provider | Role | Links |
+|----------|------|-------|
+| `ProductDiscoverProvider` | Landing-page → product profile | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/product_provider.py#L23), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/product_provider.py#L44) |
+| `ThreadDiscoverProvider` | Tavily / thread research | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/threads_provider.py#L19), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/threads_provider.py#L34) |
+| `DraftComplianceProvider` | Draft + compliance gate | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/draft_provider.py#L20), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/draft_provider.py#L35) |
+| `VisualInsightsProvider` | Chart images via Genblaze Gemini | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/insights_provider.py#L32), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/insights_provider.py#L51) |
+| `CompileReportProvider` | PDF compile step | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/report_provider.py#L18), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/report_provider.py#L27) |
+
+**`genblaze_google`:**
+
+- Text: [`from genblaze_google import chat`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/gemini_chat.py#L9), [`chat(...)` L27](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/gemini_chat.py#L27).
+- Images: [`from genblaze_google import GeminiImageProvider`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/insights_provider.py#L13), plus Genblaze [`Step`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/insights_provider.py#L12); construct [`GeminiImageProvider(...)` L79](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/insights_provider.py#L79); step modality [`Modality.IMAGE` L110](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/insights_provider.py#L110).
+
+**`Asset` helpers** — [`_assets.py` import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/_assets.py#L9), [L26](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/_assets.py#L26), [L42](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/_assets.py#L42).
+
+**After run** — [`pick_final_pdf_asset` L124](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L124), [`finalize_run_provenance` L129](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L129), [`finalize_chart_provenance` L139](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L139), [`merge_provenance` L146](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L146).
 
 ### Backblaze usage
 
@@ -1957,9 +1994,46 @@ No cold email blasts. No CRM setup. No $500/month data subscriptions. **One API 
 
 ### Genblaze usage
 
-**Code:** [`run_outreach_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L35)
+Outreach is a **nine-step Genblaze DAG**. Every research/enrichment/report stage is a `SyncProvider`; Gemini/Exa work runs *inside* those steps. Entry: [`run_outreach_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L35).
 
-Nine-step Genblaze DAG `Pipeline("outreach")`: Sheet → Website → Revenue → Investors → Portfolio → Partners → Enrich → VisualInsights (`IMAGE`) → CompileReport. Each provider is a `SyncProvider`; Gemini/Exa work happens inside steps, not outside the graph. Sink attached at `.run(sink=build_b2_sink(service="outreach"), …)`.
+**Pipeline graph** — [`from genblaze_core import Modality, Pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L8); sink [`build_b2_sink(service="outreach")`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L67); [`Pipeline("outreach")`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L74) then chained steps:
+
+| # | Step | Modality link | `.step` link |
+|---|------|---------------|--------------|
+| 0 | Sheet download | [TEXT L86](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L86) | [L79](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L79) |
+| 1 | Website analyze | [TEXT L96](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L96) | [L88](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L88) |
+| 2 | Revenue | [TEXT L101](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L101) | [L98](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L98) |
+| 3 | Investors | [TEXT L109](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L109) | [L104](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L104) |
+| 4 | Portfolio | [TEXT L117](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L117) | [L112](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L112) |
+| 5 | Partners | [TEXT L125](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L125) | [L120](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L120) |
+| 6 | Enrich | [TEXT L131](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L131) | [L128](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L128) |
+| 7 | VisualInsights | [IMAGE L141](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L141) | [L134](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L134) |
+| 8 | CompileReport | [TEXT L147](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L147) | [L144](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L144) |
+
+Run: [`.run(sink=…)` L150](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L150).
+
+**SyncProviders:**
+
+| Provider | Links |
+|----------|-------|
+| `SheetDownloadProvider` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/sheet_download_provider.py#L17), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/sheet_download_provider.py#L34) |
+| `WebsiteAnalyzeProvider` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/website_provider.py#L16), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/website_provider.py#L35) |
+| `RevenueAnalyzeProvider` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/revenue_provider.py#L16), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/revenue_provider.py#L31) |
+| `InvestorFinderProvider` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/investor_provider.py#L20), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/investor_provider.py#L35) |
+| `PortfolioBenchmarkProvider` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/portfolio_provider.py#L20), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/portfolio_provider.py#L35) |
+| `PartnerContactsProvider` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/partners_provider.py#L24), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/partners_provider.py#L39) |
+| `ContactEnrichProvider` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/enrich_provider.py#L21), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/enrich_provider.py#L34) |
+| `VisualInsightsProvider` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/insights_provider.py#L38), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/insights_provider.py#L57) |
+| `CompileReportProvider` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/report_provider.py#L19), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/report_provider.py#L28) |
+
+**`genblaze_google`:**
+
+- Text: [`chat` import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/gemini_chat.py#L9), [`chat(...)` L27](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/gemini_chat.py#L27).
+- Images: [`GeminiImageProvider` import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/insights_provider.py#L13), Genblaze [`Step`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/insights_provider.py#L12), construct [L88](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/insights_provider.py#L88), modality [L104](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/insights_provider.py#L104).
+
+**`Asset` helpers** — [import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/_assets.py#L9), [L26](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/_assets.py#L26), [L42](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/_assets.py#L42).
+
+**After run** — [`pick_final_pdf_asset` L158](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L158), [`finalize_run_provenance` L163](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L163), [`finalize_chart_provenance` L173](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L173), [`merge_provenance` L177](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L177).
 
 ### Backblaze usage
 
@@ -2631,9 +2705,42 @@ No G2 subscription. No manual spreadsheet. No consultant retainer. **One API cal
 
 ### Genblaze usage
 
-**Code:** [`run_competitor_research_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L36)
+Competitor Research is a **seven-step Genblaze DAG**. Unlike most services, B2 sink attachment is **mandatory** (no `upload_to_b2=False` path). Entry: [`run_competitor_research_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L36).
 
-Seven-step Genblaze DAG `Pipeline("competitor-research")`: FindCompetitors → Evidence → DiffFeatures → Pricing → Positioning → VisualInsights (`IMAGE`) → CompileReport. Unlike most services, this pipeline **always** attaches `build_b2_sink(service="competitor-research")` (no local-only skip) — B2 is mandatory for a completed run.
+**Pipeline graph** — [`from genblaze_core import Modality, Pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L9); always-on sink [`build_b2_sink(service="competitor-research")` L61](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L61); [`Pipeline("competitor-research")` L77](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L77):
+
+| # | Step | Modality | `.step` |
+|---|------|----------|---------|
+| 0 | FindCompetitors | [TEXT L90](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L90) | [L82](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L82) |
+| 1 | Evidence | [TEXT L95](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L95) | [L92](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L92) |
+| 2 | DiffFeatures | [TEXT L101](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L101) | [L98](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L98) |
+| 3 | Pricing | [TEXT L107](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L107) | [L104](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L104) |
+| 4 | Positioning | [TEXT L113](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L113) | [L110](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L110) |
+| 5 | VisualInsights | [IMAGE L123](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L123) | [L116](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L116) |
+| 6 | CompileReport | [TEXT L129](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L129) | [L126](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L126) |
+
+Run: [`.run(sink=…)` L132](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L132).
+
+**SyncProviders:**
+
+| Provider | Links |
+|----------|-------|
+| `FindCompetitorsProvider` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/find_competitors_provider.py#L32), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/find_competitors_provider.py#L51) |
+| `GatherEvidenceProvider` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/evidence_provider.py#L15), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/evidence_provider.py#L24) |
+| `DiffFeaturesProvider` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/features_provider.py#L114), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/features_provider.py#L126) |
+| `ScrapePricingProvider` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pricing_provider.py#L145), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pricing_provider.py#L157) |
+| `BuildPositioningProvider` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/positioning_provider.py#L126), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/positioning_provider.py#L138) |
+| `VisualInsightsProvider` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/insights_provider.py#L45), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/insights_provider.py#L64) |
+| `CompileReportProvider` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/report_provider.py#L18), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/report_provider.py#L27) |
+
+**`genblaze_google`:**
+
+- Text: [`chat` import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/gemini_chat.py#L9), [`chat(...)` L27](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/gemini_chat.py#L27).
+- Images: [`GeminiImageProvider`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/insights_provider.py#L14), Genblaze [`Step`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/insights_provider.py#L13), construct [L96](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/insights_provider.py#L96), modality [L128](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/insights_provider.py#L128).
+
+**`Asset` helpers** — [import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/_assets.py#L9), [L26](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/_assets.py#L26), [L42](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/_assets.py#L42).
+
+**After run** — [`pick_final_pdf_asset` L140](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L140), [`finalize_run_provenance` L147](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L147), [`finalize_chart_provenance` L155](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L155), [`merge_provenance` L163](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L163).
 
 ### Backblaze usage
 
@@ -3267,9 +3374,39 @@ No design agency. No Fiverr roulette. No $2,000 brand workshop. **One API call. 
 
 ### Genblaze usage
 
-**Code:** [`run_brand_kit_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L33)
+Brand Kit is an **eight-step Genblaze DAG** mixing Gemini text (`genblaze_google.chat`), Gemini image (`GeminiImageProvider`), and local palette/fonts/icon/banner/zip providers — all as `SyncProvider`s with fan-in via `input_from`. Entry: [`run_brand_kit_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L33).
 
-Eight-step Genblaze DAG `Pipeline("brand-kit")`: Analyze (`TEXT`) → LogoConcepts (`IMAGE`, `genblaze_google`) → Palette → Fonts → Visuals → Icons → Banner → Zip (`TEXT`). Fan-in (`input_from`) threads the chosen mark + palette into later image steps. `.run(sink=build_b2_sink(service="brand-kit"), on_step_complete=…)` uploads through Genblaze.
+**Pipeline graph** — [`from genblaze_core import Modality, Pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L8); sink [`build_b2_sink(service="brand-kit")` L61](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L61); [`Pipeline("brand-kit")` L67](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L67):
+
+| # | Step | Modality | `.step` |
+|---|------|----------|---------|
+| 0 | Analyze | [TEXT L81](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L81) | [L72](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L72) |
+| 1 | LogoConcepts | [IMAGE L91](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L91) | [L83](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L83) |
+| 2 | Palette | [TEXT L97](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L97) | [L94](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L94) |
+| 3 | Fonts | [TEXT L103](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L103) | [L100](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L100) |
+| 4 | Visuals | [IMAGE L109](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L109) | [L106](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L106) |
+| 5 | Icons | [IMAGE L115](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L115) | [L112](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L112) |
+| 6 | Banner | [IMAGE L127](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L127) | [L118](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L118) |
+| 7 | Zip | [TEXT L137](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L137) | [L130](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L130) |
+
+Run: [`.run(sink=…)` L140](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L140).
+
+**SyncProviders:**
+
+| Provider | Role | Links |
+|----------|------|-------|
+| `AnalyzeProvider` | Brief → concepts via `genblaze_google.chat` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/analyze_provider.py#L25), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/analyze_provider.py#L44), [`chat` import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/analyze_provider.py#L12), [`chat(...)` L83](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/analyze_provider.py#L83) |
+| `LogoConceptsProvider` | Logos via `GeminiImageProvider` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/logo_provider.py#L18), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/logo_provider.py#L37), [`GeminiImageProvider` import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/logo_provider.py#L11), construct [L56](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/logo_provider.py#L56), Genblaze [`Step` L68](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/logo_provider.py#L68), modality [L74](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/logo_provider.py#L74) |
+| `PaletteProvider` | Palette from logo pixels | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/palette_provider.py#L22), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/palette_provider.py#L32) |
+| `FontsProvider` | Google Fonts pairing/download | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/fonts_provider.py#L20), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/fonts_provider.py#L29) |
+| `VisualsProvider` | Color/type specimen images | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/visuals_provider.py#L19), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/visuals_provider.py#L29) |
+| `IconsProvider` | Favicon / app icon set | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/icons_provider.py#L30), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/icons_provider.py#L40) |
+| `BannerProvider` | Social banners (Genblaze IMAGE step; multimodal wrap) | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/banner_provider.py#L62), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/banner_provider.py#L87) |
+| `ZipProvider` | Bundle ZIP as Genblaze TEXT step | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/zip_provider.py#L23), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/zip_provider.py#L40) |
+
+**`Asset` helpers** — [`_imaging.py` import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/_imaging.py#L16), [`Asset(...)` L89](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/_imaging.py#L89) (notes ObjectStorageSink rejects `text:` URLs at [L64](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/_imaging.py#L64)).
+
+**After run** — [`pick_final_zip_asset` call L151](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L151) / [def L198](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L198), [`finalize_run_provenance` L156](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L156), [`merge_provenance` L165](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L165).
 
 ### Backblaze usage
 
@@ -3880,18 +4017,31 @@ No Figma retainer. No generic wireframe pack. **One API call. One ZIP. A full se
 
 ### Genblaze usage
 
-**Code:** [`run_app_kit_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L29)
+App Kit is a **four-step Genblaze DAG**: plan IA → resolve brand context → generate desktop/mobile UI mocks as an IMAGE step → zip. Entry: [`run_app_kit_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L29).
 
-Four-step Genblaze DAG `Pipeline("app-kit")`:
+**Pipeline graph** — [`from genblaze_core import Modality, Pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L8); sink [`build_b2_sink(service="app-kit")` L58](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L58); [`Pipeline("app-kit")` L63](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L63):
 
-| Step | Provider | Modality |
-|------|----------|----------|
-| 0 | `PlanScreensProvider` | `TEXT` |
-| 1 | `BrandContextProvider` | `TEXT` (`input_from=[0]`) — HTTP-download + unzip optional brand-kit ZIP, or invent brand direction |
-| 2 | `ScreensProvider` | `IMAGE` (`input_from=[0,1]`) — desktop + mobile mocks per planned screen via `GEMINI_IMAGE_MODEL` |
-| 3 | `ZipProvider` | `TEXT` (`input_from=[0,1,2]`) |
+| # | Provider | Modality | `.step` / fan-in |
+|---|----------|----------|------------------|
+| 0 | `PlanScreensProvider` | [TEXT L77](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L77) | [L68](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L68) |
+| 1 | `BrandContextProvider` | [TEXT L88](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L88) | [L79](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L79) (`input_from=[0]`) — download+unzip optional brand-kit ZIP or invent brand |
+| 2 | `ScreensProvider` | [IMAGE L99](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L99) | [L91](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L91) (`input_from=[0,1]`) — desktop + mobile mocks per screen |
+| 3 | `ZipProvider` | [TEXT L109](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L109) | [L102](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L102) (`input_from=[0,1,2]`) |
 
-`.run(sink=build_b2_sink(service="app-kit"), …)` is the Genblaze→B2 handoff.
+Run / Genblaze→B2 handoff: [`.run(sink=…)` L112](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L112).
+
+**SyncProviders:**
+
+| Provider | Role | Links |
+|----------|------|-------|
+| `PlanScreensProvider` | Mini IA / screen list via `genblaze_google.chat` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/plan_provider.py#L19), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/plan_provider.py#L38), [`chat` import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/plan_provider.py#L12), [`chat(...)` L83](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/plan_provider.py#L83) |
+| `BrandContextProvider` | Brand ZIP extract or invent direction via `chat` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/brand_context_provider.py#L24), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/brand_context_provider.py#L45), [`chat` import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/brand_context_provider.py#L14), [`chat(...)` L226](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/brand_context_provider.py#L226) |
+| `ScreensProvider` | Genblaze IMAGE step; loops Gemini image gen per screen | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/screens_provider.py#L22), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/screens_provider.py#L41), [`generate` L48](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/screens_provider.py#L48) |
+| `ZipProvider` | Pack `desktop/` + `mobile/` + manifest | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/zip_provider.py#L22), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/zip_provider.py#L39) |
+
+**`Asset` helpers** — [`from genblaze_core import Asset`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/_assets.py#L14), [`Asset(...)` L67](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/_assets.py#L67).
+
+**After run** — [`pick_final_zip_asset` call L123](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L123) / [def L169](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L169), [`finalize_run_provenance` L128](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L128), [`merge_provenance` L137](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L137).
 
 ### Backblaze usage
 
