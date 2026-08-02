@@ -1,4 +1,4 @@
-﻿# FounderBlaze
+# FounderBlaze
 
 > **An entire company — distilled into seven AI services.**
 
@@ -16,17 +16,16 @@ This is not a template library. **This is an ENTIRE collection of non-engineerin
 4. [Genblaze — Pipeline Runtime](#genblaze--pipeline-runtime)
 5. [Backblaze B2 — Artifact Storage](#backblaze-b2--artifact-storage)
 6. [Entrypoint Agent and MCP Server](#entrypoint-agent-and-mcp-server)
-7. [A2MCP — How Agents Call FounderBlaze](#a2mcp--how-agents-call-founderblaze)
-8. [Platform Architecture](#platform-architecture)
-9. [Service 1 — Promo Video](#service-1--promo-video)
-10. [Service 2 — Automated Product Demo](#service-2--automated-product-demo)
-11. [Service 3 — Social Listening](#service-3--social-listening)
-12. [Service 4 — Outreach](#service-4--outreach)
-13. [Service 5 — Competitor Research](#service-5--competitor-research)
-14. [Service 6 — Brand Kit](#service-6--brand-kit)
-15. [Service 7 — App Kit](#service-7--app-kit)
-16. [Universal API Reference](#universal-api-reference)
-17. [Conclusion](#conclusion)
+7. [Platform Architecture](#platform-architecture)
+8. [Service 1 — Promo Video](#service-1--promo-video)
+9. [Service 2 — Automated Product Demo](#service-2--automated-product-demo)
+10. [Service 3 — Social Listening](#service-3--social-listening)
+11. [Service 4 — Outreach](#service-4--outreach)
+12. [Service 5 — Competitor Research](#service-5--competitor-research)
+13. [Service 6 — Brand Kit](#service-6--brand-kit)
+14. [Service 7 — App Kit](#service-7--app-kit)
+15. [Universal API Reference](#universal-api-reference)
+16. [Conclusion](#conclusion)
 
 ---
 
@@ -127,39 +126,101 @@ No agency retainers. No six-week creative cycle. **One request, one delegated pi
 
 ## Genblaze — Pipeline Runtime
 
-Genblaze is **load-bearing** for FounderBlaze. It is not an optional SDK bolted on for convenience — it **is** the multi-agent execution engine that every service runs on.
+Genblaze is **load-bearing** for FounderBlaze. It is not an optional SDK bolted on for convenience — it **is** the multi-agent execution engine that every service runs on. The entrypoint agent, MCP tools, and A2MCP gateway only create and poll jobs; Genblaze *is* the service brain that turns typed input into an asset graph and a durable deliverable.
 
-### How Genblaze is used
+### What Genblaze is in this repo
 
-- Each of the seven services is a Genblaze **`Pipeline`** of **`SyncProvider`** steps (`genblaze_core`), with text/image calls via `genblaze_google` and connectors (e.g. S3/B2 sink, LMNT).
-- The Temporal worker (`apps/worker`) does not reimplement pipelines — it schedules durable jobs that call `Pipeline.run(...)`.
-- Step ordering, fan-in (`input_from`), modalities, and the asset graph are Genblaze concerns. Progress maps into Temporal heartbeats through a thin bridge.
-- Final assets are handed to a Genblaze **`ObjectStorageSink`**, which is how deliverables reach Backblaze B2 with hierarchical keys and provenance hooks.
+FounderBlaze consumes Genblaze as editable path dependencies (wired in [`packages/founderblaze/pyproject.toml`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/pyproject.toml#L46-L50) → `[tool.uv.sources]`). The SDK checkout lives under `reference/genblaze/` locally (**gitignored** — not on GitHub); the FounderBlaze integration code below is what ships in this repo.
 
-The Genblaze libraries are consumed as a path dependency from `reference/genblaze` (local checkout). Service pipelines live under `packages/founderblaze`.
+| Package | Role | Declared in |
+|---------|------|-------------|
+| `genblaze-core` | `Pipeline`, `SyncProvider`, `Modality`, `ObjectStorageSink`, `KeyStrategy`, run/manifest model | [`pyproject.toml` L47](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/pyproject.toml#L47) |
+| `genblaze-google` | Gemini text / image / multimodal providers used inside service steps | [`pyproject.toml` L50](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/pyproject.toml#L50) |
+| `genblaze-s3` | `S3StorageBackend.for_backblaze(...)` — S3-compatible B2 backend for the sink | [`pyproject.toml` L48](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/pyproject.toml#L48) |
+| `genblaze-lmnt` | LMNT TTS connector (Automated Product Demo narration) | [`pyproject.toml` L49](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/pyproject.toml#L49) |
+
+### How a service becomes a Genblaze pipeline
+
+Every live service follows the same contract:
+
+1. **Build a `Pipeline(name, tenant_id=job_id, project_id=…)`** and chain `.step(provider, model=…, modality=…, input_from=…)` for fan-in.
+2. **Run with an optional sink:** `Pipeline.run(sink=build_b2_sink(...), on_step_complete=…, pipeline_timeout=…)`.
+3. **Pick the primary asset** from the finished run (`pick_final_video_asset` / `pick_final_pdf_asset` / service-local `pick_final_zip_asset`).
+4. **Finalize Genblaze provenance** via `finalize_run_provenance` (+ `finalize_chart_provenance` when insight charts exist), then `merge_provenance` onto the job artifact dict.
+
+Temporal does not reimplement that graph. The worker activity calls `run_*_pipeline(...)` and wires Genblaze step events into job `step` + heartbeats through [`make_on_step_complete`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/temporal_bridge.py#L9).
+
+### Code map — Genblaze entrypoints
+
+| Service | Pipeline entry | Genblaze shape |
+|---------|----------------|----------------|
+| Promo Video | [`run_promo_video_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L35) | Research → Script → Seedance (`VIDEO`), then a follow-up emit pipeline that `.run(sink=…)` so only the final MP4 hits B2 |
+| Automated Product Demo | [`run_apd_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py#L28) | Plan (`TEXT`) → Record (`VIDEO`) → Assemble (`VIDEO` / mix) → sink |
+| Social Listening | [`run_social_listening_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L31) | Discover → Threads → Draft/Compliance → VisualInsights (`IMAGE`) → CompileReport → sink |
+| Outreach | [`run_outreach_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L35) | Sheet → Website → Revenue → Investors → Portfolio → Partners → Enrich → VisualInsights → CompileReport → sink |
+| Competitor Research | [`run_competitor_research_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L36) | Find → Evidence → Features → Pricing → Positioning → VisualInsights → CompileReport → **required** sink |
+| Brand Kit | [`run_brand_kit_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L33) | Analyze → Logos → Palette → Fonts → Visuals → Icons → Banner → Zip → sink |
+| App Kit | [`run_app_kit_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L29) | PlanScreens → BrandContext → Screens (`IMAGE`) → Zip → sink |
+
+Shared Genblaze↔storage glue:
+
+- [`core/storage/b2.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py) — [`build_b2_sink`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L29), [`pick_final_video_asset`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L121), [`pick_final_pdf_asset`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L148), [`resolve_download_url`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L56)
+- [`core/storage/provenance.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py) — [`finalize_run_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L69), [`finalize_chart_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L209), [`merge_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L289)
 
 ### Why Genblaze is load-bearing
 
-Without Genblaze there is **no shared step graph**, **no uniform run/asset model**, and **no provenance chain** tying a job to its outputs. The entrypoint agent, MCP tools, and A2MCP gateway would have nothing durable to invoke — they only create and poll jobs; Genblaze *is* the service brain. Swap it out and you rewrite every product pipeline from scratch.
+Without Genblaze there is **no shared step graph**, **no uniform run/asset model**, and **no provenance chain** tying a job to its outputs. Swap it out and you rewrite every product pipeline from scratch — Temporal, FastAPI, and MCP would have nothing durable to invoke.
 
 ---
 
 ## Backblaze B2 — Artifact Storage
 
-Backblaze B2 is **load-bearing** for FounderBlaze. It is the **sole** durable object store for user-facing deliverables on the live Python path.
+Backblaze B2 is **load-bearing** for FounderBlaze. It is the **sole** durable object store for user-facing deliverables on the live Python path. Genblaze produces the asset graph; B2 is where founders (and agents) actually download the file.
 
-### How Backblaze is used
+### How Genblaze and Backblaze connect
 
-- Pipelines upload through Genblaze `ObjectStorageSink` backed by `genblaze_s3` / `S3StorageBackend.for_backblaze(...)` (see `packages/founderblaze/.../core/storage/b2.py`).
-- Object keys follow `founderblaze/{service}/…` (hierarchical). Typical artifacts: MP4 (promo / APD), PDF (outreach / social / competitor), ZIP (brand kit / app kit), plus insight chart PNGs where visual add-ons run.
-- The A2MCP API refreshes download URLs with `resolve_download_url` (presigned TTL or optional `B2_PUBLIC_URL_BASE`).
-- Provenance sidecars (`{object_key}.genblaze.json`) and manifests sit beside deliverables so hash ↔ object ↔ verify stays intact (`core/storage/provenance.py`).
+FounderBlaze never talks to B2 with ad-hoc SDKs in each service. One adapter builds a Genblaze sink on top of the Genblaze S3 connector:
 
-Required env: `B2_KEY_ID`, `B2_APP_KEY`, `B2_BUCKET`, `B2_REGION` (optional `B2_URL_TTL_SECONDS`, `B2_PUBLIC_URL_BASE`).
+**[`b2.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py)**
+
+| Function | What it does |
+|----------|----------------|
+| [`build_b2_backend`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L16) | `S3StorageBackend.for_backblaze(bucket, region, key_id, app_key, public_url_base)` after `Settings.require_b2()` |
+| [`build_b2_sink(service=…)`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L29) | Wraps that backend in Genblaze `ObjectStorageSink` with prefix `founderblaze/{service}` and `KeyStrategy.HIERARCHICAL` |
+| [`resolve_download_url(object_key)`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L56) | Client-facing URL — public base when TTL ≤ 0, else presigned GET |
+| [`pick_final_video_asset`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L121) / [`pick_final_pdf_asset`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L148) | Walk the finished Genblaze run reverse and find the primary media asset |
+| [`upload_local_file`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L81) | Direct `backend.put` fallback (e.g. assemble edge cases) |
+| [`object_key_from_asset_url`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L99) | Best-effort key parse from Genblaze/B2 URLs |
+
+When a pipeline calls `Pipeline.run(sink=build_b2_sink(service="brand-kit"))`, Genblaze uploads step assets under that hierarchical prefix. After the run, FounderBlaze:
+
+1. Picks the primary local path ([`pick_primary_local_path`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L27) in [`provenance.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py))
+2. Calls [`finalize_run_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L69) — verifies the Genblaze manifest, writes `{object_key}.genblaze.json`, optionally uploads the sidecar beside the object
+3. Merges provenance fields onto the artifact via [`merge_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L289)
+
+**Modes:** MP4 uses **pointer** provenance; PDF / ZIP use **sidecar** provenance. Insight charts (outreach / social / competitor) go through [`finalize_chart_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L209).
+
+### Where objects live
+
+| Service slug | B2 prefix | Primary artifact |
+|--------------|-----------|------------------|
+| `promo-video` | `founderblaze/promo-video/` | MP4 |
+| `automated-product-demo` | `founderblaze/automated-product-demo/` | MP4 |
+| `social-listening` | `founderblaze/social-listening/` | PDF (+ chart PNGs) |
+| `outreach` | `founderblaze/outreach/` | PDF (+ chart PNGs) |
+| `competitor-research` | `founderblaze/competitor-research/` | PDF (+ chart PNGs) |
+| `brand-kit` | `founderblaze/brand-kit/` | ZIP |
+| `app-kit` | `founderblaze/app-kit/` | ZIP |
+
+### How download URLs reach the caller
+
+- Pipeline result stores `object_key` + URL on the artifact.
+- On job poll, the A2MCP gateway refreshes URLs in [`apps/api/.../main.py`](https://github.com/Marshal-AM/founderblaze/blob/main/apps/api/src/founderblaze_api/main.py#L80) via `resolve_download_url(item["object_key"])` so clients always get a live link (presigned TTL or public base).
+- Config: `B2_KEY_ID`, `B2_APP_KEY`, `B2_BUCKET`, `B2_REGION` (required); `B2_URL_TTL_SECONDS`, `B2_PUBLIC_URL_BASE` (optional) — see [`core/config.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/config.py#L49).
 
 ### Why Backblaze is load-bearing
 
-A completed job with no downloadable file is useless. Chat replies and job polls surface **B2 URLs** in `artifacts[]`. Provenance verify/embed assumes B2 object keys. There is **no alternate primary store** for live Python pipelines (not Supabase). If B2 is down or misconfigured, founders get no promo video, no PDF, no brand/app ZIP — the product stops at the last mile.
+A completed job with no downloadable file is useless. Chat replies and job polls surface **B2 URLs** in `artifacts[]`. Provenance verify/embed assumes B2 object keys. There is **no alternate primary store** for live Python pipelines. If B2 is down or misconfigured, founders get no promo video, no PDF, no brand/app ZIP — the product stops at the last mile.
 
 ---
 
@@ -202,115 +263,6 @@ Chat UI / Cursor MCP / Postman
                                   v
                          Temporal worker -> Genblaze -> B2
 ```
-
----
-
-## A2MCP — How Agents Call FounderBlaze
-
-**A2MCP** is FounderBlaze's async job HTTP protocol: structured input in, durable job out, poll until artifacts are ready. The entrypoint agent and MCP server both create jobs through this gateway (`apps/api`).
-
----
-
-### Why A2MCP fits FounderBlaze
-
-| Dimension | Open-ended agent chat | A2MCP job protocol ← **FounderBlaze** |
-|-----------|------------------------|----------------------------------------|
-| Best for | Clarifying questions, routing | Structured input → structured deliverable |
-| Contract | Conversational | Typed input schema per service |
-| Execution | Entrypoint Gemini loop | Temporal + Genblaze pipeline |
-| Output | Natural-language summary | MP4 / PDF / ZIP on Backblaze B2 |
-| Fit | Great for the entrypoint agent | **Perfect** for the seven service pipelines |
-
-Every FounderBlaze service has a typed input schema, a predictable output artifact, and an async SLA. That is the A2MCP sweet spot.
-
----
-
-### Universal Request Envelope
-
-Every job creation call uses the same outer JSON envelope, validated by `CreateJobRequest`:
-
-```json
-{
-  "input": {
-    /* service-specific fields — see each service section below */
-  },
-  "callback_url": "https://your-app.com/webhooks/founderblaze",
-  "priority": "normal"
-}
-```
-
-| Field | Required | Type | Description |
-|-------|----------|------|-------------|
-| `input` | **Yes** | `object` | Service-specific payload (Pydantic-validated per service) |
-| `callback_url` | No | `string (URL)` | Webhook fired on job completion |
-| `priority` | No | `"low"` \| `"normal"` \| `"high"` | Queue priority (default: `"normal"`) |
-
-#### Recommended Headers
-
-```http
-Content-Type: application/json
-X-Idempotency-Key: unique-key-per-request
-```
-
-The idempotency key prevents duplicate job creation if an agent retries after a network timeout.
-
----
-
-### Universal Response — Job Creation (`202 Accepted`)
-
-```json
-{
-  "job_id": "550e8400-e29b-41d4-a716-446655440000",
-  "eta_seconds": 300,
-  "status_url": "/v1/jobs/550e8400-e29b-41d4-a716-446655440000",
-  "status": "queued"
-}
-```
-
----
-
-### Universal Response — Job Polling (`GET /v1/jobs/:jobId`)
-
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "service": "competitor-research",
-  "status": "running",
-  "step": "scrapePricing",
-  "artifacts": [],
-  "cost_breakdown": [
-    { "vendor": "groq", "operation": "completeJson", "amount_usd": 0.002 }
-  ],
-  "error": null,
-  "created_at": "2026-07-27T10:00:00.000Z",
-  "updated_at": "2026-07-27T10:05:00.000Z",
-  "eta_seconds": 300
-}
-```
-
-#### Job Status Lifecycle
-
-```mermaid
-stateDiagram-v2
-    [*] --> queued: POST /jobs
-    queued --> running: Temporal worker picks up
-    running --> completed: Pipeline succeeds
-    running --> failed: Pipeline error
-    running --> awaiting_approval: Human gate (future)
-    queued --> cancelled: Cancel request
-    completed --> [*]
-    failed --> [*]
-    cancelled --> [*]
-```
-
-| Status | Meaning |
-|--------|---------|
-| `queued` | Job accepted, waiting for worker |
-| `running` | Pipeline in progress (`step` field shows current phase) |
-| `completed` | Artifacts available |
-| `failed` | Error in `error` field |
-| `awaiting_approval` | Reserved for future human-in-the-loop gates |
-| `cancelled` | Job cancelled before completion |
 
 ---
 
@@ -423,11 +375,20 @@ Promo Video takes nothing but your product URL and returns a polished MP4 genera
 
 ### Genblaze usage
 
-Promo Video is a Genblaze pipeline: product research and script steps (Gemini) feed Segmind Seedance generation, then an emit/persist pipeline uploads the final MP4 through `ObjectStorageSink`. Step progress is reported into Temporal via the Genblaze bridge.
+**Code:** [`run_promo_video_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L35)
+
+Promo Video is a **two-phase** Genblaze flow so Seedance’s local MP4 is the only file that hits object storage:
+
+1. `Pipeline("promo-video")` — Research (`TEXT`, Gemini via `genblaze_google`) → Script (`TEXT`) → Seedance (`VIDEO`) producing a local `file://` MP4.
+2. Follow-up emit pipeline (`promo-video-upload` / local variant) — `EmitFinalVideo` + `Pipeline.run(sink=build_b2_sink(service="promo-video"))`.
+
+Worker progress: [`make_on_step_complete`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/temporal_bridge.py#L9) maps Genblaze step events → job `step` + Temporal heartbeats from `run_promo_video_activity`.
 
 ### Backblaze usage
 
-The finished promo MP4 (and provenance pointer sidecar) is stored under `founderblaze/promo-video/…`. Job polls and the entrypoint agent return that B2 URL — Seedance alone is not the durable store of record.
+**Code:** [`build_b2_sink`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L29) → [`pick_final_video_asset`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L121) → [`resolve_download_url`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L56) → [`finalize_run_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L69) (`mode="pointer"`) → [`merge_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L289) — called from [`run_promo_video_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L35).
+
+Prefix: `founderblaze/promo-video/…`. **B2 is the durable store of record for the finished MP4** — Seedance may host a transient render URL during generation, but the job artifact returned to agents/API is the B2 object (+ `.genblaze.json` pointer provenance).
 
 ---
 
@@ -538,7 +499,7 @@ sequenceDiagram
 
     Note over PV,SB: Step: upload_images
     loop Each PNG
-        PV->>SB: POST demoforge/images/*.png
+        PV->>SB: PUT founderblaze/promo-video/* (emit sink)
         SB-->>PV: public/signed URL
     end
 
@@ -603,13 +564,13 @@ For each selected page:
 
 #### Phase 3: `upload_images` — Reference Image Hosting
 
-Seedance 2.0 accepts **public HTTPS URLs** as reference images — not local file paths. Screenshots must be uploaded before script generation completes and before video submission.
+Seedance 2.0 accepts **public HTTPS URLs** as reference images — not local file paths. Screenshots must be reachable before video submission.
 
-1. Each PNG is uploaded to **Backblaze B2** at `demoforge/images/{timestamp}-{uuid}.png`.
-2. Presigned URLs use `B2_URL_TTL_SECONDS`, or `B2_PUBLIC_URL_BASE` when the bucket is public.
-3. The resulting URLs are indexed as `image 1`, `image 2`, … for downstream prompt citation.
+1. Reference screenshots are staged as HTTPS URLs for Seedance (vendor-facing during generation).
+2. After Seedance finishes, the **emit** Genblaze pipeline uploads the final MP4 through `build_b2_sink(service="promo-video")` under `founderblaze/promo-video/…`.
+3. Reference images are indexed as `image 1`, `image 2`, … for downstream prompt citation.
 
-**Important:** Only **screenshots** go to Backblaze B2. The final MP4 **never** bypasses durable storage incorrectly — it stays on Segmind's CDN.
+**Important:** Seedance may return a transient CDN URL while rendering. The **job artifact** returned to API/agent callers is always the **Backblaze B2** object (plus Genblaze pointer provenance) — not Segmind as the store of record.
 
 **Intermediate artifact:** `image_urls.json` mapping each reference image to its page URL, reason, local path, and public URL.
 
@@ -696,7 +657,7 @@ The final phase submits the creative package to **Segmind's Seedance 2.0 API**.
 | **Firecrawl** | Site mapping + viewport screenshot capture | `discover.ts`, `screenshots.ts` |
 | **Google Gemini 3.1 Flash Lite** | Page ranking (text) + ad script writing (multimodal) | `discover.ts`, `script.ts` |
 | **Segmind Seedance 2.0** | AI video generation with synced audio | `video.ts` |
-| **Backblaze B2** | Reference image hosting (`demoforge/images/`) | `storage.ts` |
+| **Backblaze B2** | Final MP4 + provenance (`founderblaze/promo-video/`) | [`b2.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py), [`provenance.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py) |
 | **Temporal** | Durable workflow orchestration, heartbeats, retries | `apps/orchestrator` |
 | **PostgreSQL** | Job state, step tracking, artifact URLs | `@founderblaze/db` |
 | **Zod** | Input/output validation at API and pipeline boundaries | `schema.ts`, `@founderblaze/schemas` |
@@ -827,11 +788,23 @@ This is not a screen recording you made manually. This is your product, on your 
 
 ### Genblaze usage
 
-Automated Product Demo is a Genblaze pipeline: Gemini plans browser steps, Firecrawl/Playwright records the session, LMNT synthesizes narration, and ffmpeg assembles the MP4 before sink upload.
+**Code:** [`run_apd_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py#L28)
+
+Single Genblaze DAG `Pipeline("apd")`:
+
+| Step | Modality | Role |
+|------|----------|------|
+| Plan | `TEXT` | Gemini plans atomic browser steps from URL + script |
+| Record | `VIDEO` | Firecrawl/Playwright session capture |
+| Assemble | `VIDEO` (mix) | LMNT narration (`genblaze_lmnt`) + ffmpeg mux → final MP4 |
+
+`Pipeline.run(sink=build_b2_sink(service="automated-product-demo"), on_step_complete=…)` uploads through Genblaze’s `ObjectStorageSink`. Temporal bridge: same [`make_on_step_complete`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/temporal_bridge.py#L9) pattern from `run_apd_activity`.
 
 ### Backblaze usage
 
-The narrated demo MP4 is uploaded under `founderblaze/automated-product-demo/…` with a Genblaze provenance sidecar. That B2 object is the deliverable returned on job completion.
+**Code:** after `.run(sink=…)`, [`pick_final_video_asset`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L121) → [`resolve_download_url`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L56) → [`finalize_run_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L69) (`mode="pointer"`) → [`merge_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L289).
+
+Prefix: `founderblaze/automated-product-demo/…`. The narrated MP4 on B2 is the sole job deliverable; optional `--no-b2` / `upload_to_b2=False` keeps a local `file://` artifact for CLI smoke only.
 
 ---
 
@@ -961,7 +934,7 @@ sequenceDiagram
     APD->>FF: concat all segments → demo.mp4
 
     Note over APD,SB: Step: upload
-    APD->>SB: POST demoforge/demos/*.mp4
+    APD->>SB: PUT founderblaze/automated-product-demo/* (ObjectStorageSink)
     SB-->>APD: public/signed URL
 
     APD->>DB: UPDATE job → completed
@@ -1133,11 +1106,11 @@ The assembly engine transforms raw JPEG screencast frames + WAV narration into a
 
 #### Phase 5: `upload` — Artifact Delivery
 
-Unlike Promo Video (where the final MP4 stays on Segmind's CDN), Automated Product Demo uploads the finished video to **Backblaze B2**.
+Automated Product Demo uploads the finished video through Genblaze `ObjectStorageSink` via `build_b2_sink(service="automated-product-demo")` (same pattern as Promo Video’s emit → B2 path).
 
-- **Bucket:** `demoforge` (configurable)
-- **Path:** `demos/{timestamp}-{uuid}.mp4`
-- **URL:** Presigned or public Backblaze B2 object URL
+- **Prefix:** `founderblaze/automated-product-demo/…`
+- **URL:** Presigned or public Backblaze B2 object URL from `resolve_download_url`
+- **Provenance:** `finalize_run_provenance(..., mode="pointer")` → `{object_key}.genblaze.json`
 
 The job artifact includes both `url` and `object_key` for programmatic access.
 
@@ -1155,7 +1128,7 @@ The job artifact includes both `url` and `object_key` for programmatic access.
 | **Google Gemini 3.1 Flash Lite** | Step planning + grounded narration writing | `planner.ts`, `narrator.ts` |
 | **Deepgram Aura TTS** | Per-step voiceover synthesis (WAV) | `tts.ts` |
 | **ffmpeg / ffprobe** | Frame→video build, padding, mux, concat | `assemble.ts`, `media.ts` |
-| **Backblaze B2** | Final MP4 hosting (`demoforge/demos/`) | `storage.ts` |
+| **Backblaze B2** | Final MP4 + provenance (`founderblaze/automated-product-demo/`) | [`apd/pipeline.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py), [`b2.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py) |
 | **Temporal** | Durable workflow orchestration, heartbeats, retries | `apps/orchestrator` |
 | **PostgreSQL** | Job state, step tracking, artifact URLs | `@founderblaze/db` |
 | **Zod** | Input/output validation at API and pipeline boundaries | `schema.ts`, `@founderblaze/schemas` |
@@ -1373,17 +1346,11 @@ Both services produce MP4 videos, but they solve fundamentally different problem
 | **Browser** | Static screenshots only | Full interact session on live site |
 | **Video engine** | Segmind Seedance 2.0 | ffmpeg (real screencast frames) |
 | **Narration** | Baked into Seedance audio | Deepgram TTS per step, muxed in ffmpeg |
-| **Hosting** | Segmind CDN | Backblaze B2 |
+| **Hosting** | Backblaze B2 (`founderblaze/promo-video/`) | Backblaze B2 (`founderblaze/automated-product-demo/`) |
 | **Best for** | Launch ads, social clips, Product Hunt hero | Onboarding docs, feature walkthroughs, sales demos |
 | **SLA** | 5 min | 5 min |
 
 Use **Promo Video** when you need a polished ad that stops the scroll. Use **Automated Product Demo** when you need to show your product actually working.
-
----
-
-### Sample Output
-
-<!-- Paste your automated product demo output here -->
 
 ---
 
@@ -1401,11 +1368,15 @@ This is not auto-posting. This is not spam automation. This is **intelligence** 
 
 ### Genblaze usage
 
-Social Listening is a Genblaze pipeline: product discovery → Tavily thread research → draft/compliance → optional visual insights → Playwright PDF compile, then `ObjectStorageSink` upload.
+**Code:** [`run_social_listening_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L31)
+
+Five-step Genblaze DAG `Pipeline("social-listening")`: ProductDiscover → ThreadDiscover → DraftCompliance → VisualInsights (`IMAGE`) → CompileReport (`TEXT`). Fan-in via `input_from` so the PDF compiler sees drafts + charts. `.run(sink=build_b2_sink(service="social-listening"), on_step_complete=…)` persists assets through Genblaze.
 
 ### Backblaze usage
 
-The engagement playbook PDF (and insight chart PNGs) land under `founderblaze/social-listening/…`. Thread URLs are returned as job artifact metadata; the PDF is the B2 primary deliverable.
+**Code:** [`pick_final_pdf_asset`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L148) → [`finalize_run_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L69) (`mode="sidecar"`) → [`finalize_chart_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L209) → [`merge_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L289). Thread URLs are extra non-B2 metadata artifacts on the job.
+
+Prefix: `founderblaze/social-listening/…` for the PDF and chart objects. Sidecar: `{object_key}.genblaze.json` beside the report.
 
 ### Add-ons
 
@@ -1532,7 +1503,7 @@ sequenceDiagram
     Note over SL,SB: Step: compile_report
     SL->>PDF: Render Reddit Engagement Plan PDF
     PDF-->>SL: PDF buffer
-    SL->>SB: POST demoforge/reddit/*.pdf
+    SL->>SB: PUT founderblaze/social-listening/* (ObjectStorageSink)
     SB-->>SL: pdf_url
 
     SL->>DB: UPDATE job → completed
@@ -1728,7 +1699,7 @@ Included recommendations are compiled into a professional PDF using **pdfkit** (
    - **Comment to post** — full copy-paste draft
    - Draft rationale notes
 
-The PDF is uploaded to **Backblaze B2** at `demoforge/reddit/{timestamp}-{uuid}-{slug}.pdf`.
+The PDF is uploaded to **Backblaze B2** under `founderblaze/social-listening/…` via Genblaze `ObjectStorageSink` (`build_b2_sink(service="social-listening")`).
 
 **Cost tracked:** (included in pipeline overhead; storage ~negligible)
 
@@ -1743,7 +1714,7 @@ The PDF is uploaded to **Backblaze B2** at `demoforge/reddit/{timestamp}-{uuid}-
 | **Tavily Search** | Fallback discovery when Research returns 0 threads | `ingest/tavilyReddit.ts` |
 | **Local Embeddings** | Few-shot tone matching for draft generation | `embeddings/local.ts` |
 | **pdfkit** | PDF report rendering (no browser) | `report/compileReport.ts` |
-| **Backblaze B2** | PDF hosting (`demoforge/reddit/`) | `report/storage.ts` |
+| **Backblaze B2** | PDF + charts (`founderblaze/social-listening/`) | [`social_listening/pipeline.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py), [`b2.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py) |
 | **Temporal** | Durable workflow orchestration, heartbeats | `apps/orchestrator` |
 | **PostgreSQL** | Job state, step tracking, artifact URLs | `@founderblaze/db` |
 | **Zod** | Input/output validation | `schema.ts`, `@founderblaze/schemas` |
@@ -1972,12 +1943,6 @@ The PDF is designed for **human-in-the-loop execution**: open report → tap thr
 
 ---
 
-### Sample Output
-
-<!-- Paste your social listening PDF / thread links here -->
-
----
-
 ## Service 4 — Outreach
 
 > **Your website + revenue sheet in. Investor intelligence report out.**
@@ -1992,11 +1957,15 @@ No cold email blasts. No CRM setup. No $500/month data subscriptions. **One API 
 
 ### Genblaze usage
 
-Outreach is a Genblaze pipeline: sheet download → website/revenue/investor/portfolio/partner/enrich providers (Exa + Gemini) → visual diligence charts → PDF compile → sink upload.
+**Code:** [`run_outreach_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L35)
+
+Nine-step Genblaze DAG `Pipeline("outreach")`: Sheet → Website → Revenue → Investors → Portfolio → Partners → Enrich → VisualInsights (`IMAGE`) → CompileReport. Each provider is a `SyncProvider`; Gemini/Exa work happens inside steps, not outside the graph. Sink attached at `.run(sink=build_b2_sink(service="outreach"), …)`.
 
 ### Backblaze usage
 
-The investor intelligence PDF and chart PNGs are stored under `founderblaze/outreach/…`. Completed jobs expose those B2 URLs in `artifacts[]`.
+**Code:** [`pick_final_pdf_asset`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L148) → [`finalize_run_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L69) (`mode="sidecar"`) → [`finalize_chart_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L209) → [`merge_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L289).
+
+Prefix: `founderblaze/outreach/…`. Completed jobs expose B2 URLs in `artifacts[]`; the API re-signs them on poll via [`resolve_download_url`](https://github.com/Marshal-AM/founderblaze/blob/main/apps/api/src/founderblaze_api/main.py#L80).
 
 ### Add-ons
 
@@ -2163,7 +2132,7 @@ sequenceDiagram
     OR->>OR: buildReportHtml(all findings)
     OR->>PW: setContent → page.pdf()
     PW-->>OR: PDF buffer
-    OR->>SB: POST demoforge/outreach/*.pdf
+    OR->>SB: PUT founderblaze/outreach/* (ObjectStorageSink)
     SB-->>OR: pdf_url
 
     OR->>DB: UPDATE job → completed
@@ -2408,7 +2377,7 @@ const pdfBytes = await page.pdf({
 });
 ```
 
-PDFs are **upload-only** — never written to local disk in production. Uploaded to Backblaze B2 at `demoforge/outreach/{slug}-outreach-{timestamp}.pdf`.
+PDFs are uploaded through Genblaze’s sink (local workdir is ephemeral). Durable objects live on Backblaze B2 under `founderblaze/outreach/…` via `build_b2_sink(service="outreach")`.
 
 
 ---
@@ -2423,7 +2392,7 @@ PDFs are **upload-only** — never written to local disk in production. Uploaded
 | **Exa Deep Search** | Investor, portfolio, partner, and person searches | `clients/exaClient.ts` |
 | **SheetJS (`xlsx`)** | Workbook loading (.xlsx, .csv, etc.) | `clients/sheetLoader.ts` |
 | **Playwright** | HTML → PDF rendering | `report/compileReport.ts` |
-| **Backblaze B2** | PDF hosting (`demoforge/outreach/`) | `report/storage.ts` |
+| **Backblaze B2** | PDF + diligence charts (`founderblaze/outreach/`) | [`outreach/pipeline.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py), [`b2.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py) |
 | **Temporal** | Durable workflow orchestration | `apps/orchestrator` |
 | **PostgreSQL** | Job state, step tracking | `@founderblaze/db` |
 | **Zod** | Input/output validation | `schema.ts`, `@founderblaze/schemas` |
@@ -2648,12 +2617,6 @@ Clarity on scope boundaries:
 
 ---
 
-### Sample Output
-
-<!-- Paste your outreach PDF link here -->
-
----
-
 ## Service 5 — Competitor Research
 
 > **Product name in. Full competitive intelligence report out.**
@@ -2668,11 +2631,15 @@ No G2 subscription. No manual spreadsheet. No consultant retainer. **One API cal
 
 ### Genblaze usage
 
-Competitor Research is a Genblaze pipeline: find competitors → evidence fetch → features/pricing/positioning (Gemini) → attack visuals → PDF compile → required B2 sink upload.
+**Code:** [`run_competitor_research_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L36)
+
+Seven-step Genblaze DAG `Pipeline("competitor-research")`: FindCompetitors → Evidence → DiffFeatures → Pricing → Positioning → VisualInsights (`IMAGE`) → CompileReport. Unlike most services, this pipeline **always** attaches `build_b2_sink(service="competitor-research")` (no local-only skip) — B2 is mandatory for a completed run.
 
 ### Backblaze usage
 
-The report PDF and chart PNGs are stored under `founderblaze/competitor-research/…`. Local workdirs are wiped after upload; B2 is the system of record for the deliverable.
+**Code:** requires a resolved `object_key` after `.run(sink=…)` → [`finalize_run_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L69) (`mode="sidecar"`) → [`finalize_chart_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L209) → [`merge_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L289). Workdir is `shutil.rmtree`’d in `finally` so local temp files are not the system of record.
+
+Prefix: `founderblaze/competitor-research/…` for the PDF and attack-visual chart PNGs.
 
 ### Add-ons
 
@@ -3060,7 +3027,7 @@ Uploaded to Backblaze B2 at `reports/competitor-research/{slug}-{timestamp}.pdf`
 | **Jina Reader** | Public page fetch → cleaned markdown | `@founderblaze/connectors` |
 | **Groq (`llm-core`)** | Ranking, feature scoring, pricing extraction, SWOT | `@founderblaze/llm-core` |
 | **Playwright** | HTML → PDF rendering | `agents/compileReport.ts` |
-| **Backblaze B2** | PDF hosting (`reports` bucket) | `storage.ts` |
+| **Backblaze B2** | PDF + attack visuals (`founderblaze/competitor-research/`) | [`competitor_research/pipeline.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py), [`b2.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py) |
 | **Temporal** | Multi-activity durable workflow (5 activities) | `apps/orchestrator` |
 | **PostgreSQL** | Job state, per-step visibility | `@founderblaze/db` |
 | **Zod** | Input/output validation | `schema.ts`, `@founderblaze/schemas` |
@@ -3286,12 +3253,6 @@ Every claim in the report traces to a public URL in the evidence matrix. When da
 
 ---
 
-### Sample Output
-
-<!-- Paste your competitor research PDF link here -->
-
----
-
 ## Service 6 — Brand Kit
 
 > **Brand name + brief in. Complete brand identity ZIP out.**
@@ -3306,11 +3267,15 @@ No design agency. No Fiverr roulette. No $2,000 brand workshop. **One API call. 
 
 ### Genblaze usage
 
-Brand Kit is a Genblaze pipeline: brief analysis → Gemini image logos/icons/banners → palette/fonts/visuals providers → ZIP assemble → sink upload.
+**Code:** [`run_brand_kit_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L33)
+
+Eight-step Genblaze DAG `Pipeline("brand-kit")`: Analyze (`TEXT`) → LogoConcepts (`IMAGE`, `genblaze_google`) → Palette → Fonts → Visuals → Icons → Banner → Zip (`TEXT`). Fan-in (`input_from`) threads the chosen mark + palette into later image steps. `.run(sink=build_b2_sink(service="brand-kit"), on_step_complete=…)` uploads through Genblaze.
 
 ### Backblaze usage
 
-The brand identity ZIP (and provenance sidecar) is stored under `founderblaze/brand-kit/…`. Job completion returns that B2 download URL.
+**Code:** service-local `pick_final_zip_asset` in [`brand_kit/pipeline.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py) → [`resolve_download_url`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L56) → [`finalize_run_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L69) (`mode="sidecar"`) → [`merge_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L289). Artifact type: `brand_kit_zip`.
+
+Prefix: `founderblaze/brand-kit/…`. Job completion returns that B2 download URL (+ `.genblaze.json` sidecar).
 
 
 ---
@@ -3468,7 +3433,7 @@ sequenceDiagram
 
     Note over BK,SB: Step: zip + upload
     BK->>BK: Bundle all files into ZIP
-    BK->>SB: POST demoforge/brandkit/*.zip
+    BK->>SB: PUT founderblaze/brand-kit/* (ObjectStorageSink)
     SB-->>BK: zip_url
 
     BK->>DB: UPDATE job → completed
@@ -3680,7 +3645,7 @@ solace-brand-kit.zip
 
 **`analysis.json`** — raw analyst output (all concept angles, typography mood, rationale).
 
-Uploaded to `demoforge/brandkit/{timestamp}-{uuid}-{slug}-brand-kit.zip`.
+Uploaded under `founderblaze/brand-kit/…` via `build_b2_sink(service="brand-kit")` + `finalize_run_provenance` (sidecar).
 
 ---
 
@@ -3695,7 +3660,7 @@ Uploaded to `demoforge/brandkit/{timestamp}-{uuid}-{slug}-brand-kit.zip`.
 | **sharp** | Icon resize, banner crop, SVG → PNG rasterization | `report/assetSizer.ts`, `report/brandVisuals.ts` |
 | **png-to-ico** | Multi-size favicon.ico generation | `report/assetSizer.ts` |
 | **archiver (ZIP)** | Brand kit bundling | `report/zipper.ts` |
-| **Backblaze B2** | ZIP hosting (`demoforge/brandkit/`) | `report/storage.ts` |
+| **Backblaze B2** | ZIP + provenance (`founderblaze/brand-kit/`) | [`brand_kit/pipeline.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py), [`b2.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py) |
 | **Temporal** | Single-activity durable workflow | `apps/orchestrator` |
 | **PostgreSQL** | Job state, step tracking | `@founderblaze/db` |
 | **Zod** | Input/output validation | `schema.ts`, `@founderblaze/schemas` |
@@ -3901,12 +3866,6 @@ Brand Kit generates **3 logo concepts** by default. The `pick` parameter selects
 
 ---
 
-### Sample Output
-
-<!-- Paste your brand kit ZIP link here -->
-
----
-
 ## Service 7 — App Kit
 
 > **Product name + idea in. Desktop and mobile UI mock ZIP out.**
@@ -3921,11 +3880,24 @@ No Figma retainer. No generic wireframe pack. **One API call. One ZIP. A full se
 
 ### Genblaze usage
 
-App Kit is a Genblaze pipeline: plan screens (TEXT) → brand context from ZIP or invented direction (TEXT) → Gemini image desktop/mobile mocks per screen (IMAGE) → ZIP assemble → sink upload.
+**Code:** [`run_app_kit_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L29)
+
+Four-step Genblaze DAG `Pipeline("app-kit")`:
+
+| Step | Provider | Modality |
+|------|----------|----------|
+| 0 | `PlanScreensProvider` | `TEXT` |
+| 1 | `BrandContextProvider` | `TEXT` (`input_from=[0]`) — HTTP-download + unzip optional brand-kit ZIP, or invent brand direction |
+| 2 | `ScreensProvider` | `IMAGE` (`input_from=[0,1]`) — desktop + mobile mocks per planned screen via `GEMINI_IMAGE_MODEL` |
+| 3 | `ZipProvider` | `TEXT` (`input_from=[0,1,2]`) |
+
+`.run(sink=build_b2_sink(service="app-kit"), …)` is the Genblaze→B2 handoff.
 
 ### Backblaze usage
 
-The UI mock ZIP (and provenance sidecar) is stored under `founderblaze/app-kit/…`. Job completion returns that B2 download URL. Optional `brand_kit_url` is an HTTP download of a brand-kit ZIP (unzipped inside the pipeline); it is not stored as the primary deliverable.
+**Code:** `pick_final_zip_asset` in [`app_kit/pipeline.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py) → [`resolve_download_url`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L56) → [`finalize_run_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L69) (`mode="sidecar"`) → [`merge_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L289). Artifact type: `app_kit_zip`.
+
+Prefix: `founderblaze/app-kit/…` (`desktop/`, `mobile/`, `manifest.json` inside the ZIP). Optional `brand_kit_url` is fetched over HTTP inside `BrandContextProvider` for styling only — it is **not** re-uploaded as the primary deliverable; the App Kit ZIP on B2 is.
 
 ---
 
@@ -4082,12 +4054,6 @@ uv run --package founderblaze founderblaze-app-kit-live \
   ]
 }
 ```
-
----
-
-### Sample Output
-
-<!-- Paste your app kit ZIP link here -->
 
 ---
 
