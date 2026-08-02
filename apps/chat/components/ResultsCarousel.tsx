@@ -29,6 +29,12 @@ export const SHOWCASE_ITEMS: ShowcaseItem[] = [
     kind: "image",
   },
   {
+    id: "pitch",
+    service: "Pitch Deck",
+    src: "/showcase/pitch-deck.png",
+    kind: "image",
+  },
+  {
     id: "outreach",
     service: "Investor Outreach",
     src: "/showcase/outreach.png",

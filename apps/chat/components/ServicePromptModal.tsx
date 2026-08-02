@@ -102,6 +102,28 @@ export const SERVICE_FORMS: ServiceFormDef[] = [
       `Please generate an app kit for "${v.product_name}". Product idea: ${v.product_idea}`,
   },
   {
+    id: "pitch-deck",
+    label: "Pitch Deck",
+    blurb: "6–8 page investor deck PDF from your product URL.",
+    fields: [
+      {
+        key: "product_url",
+        label: "Product URL",
+        placeholder: "https://yourproduct.com",
+        type: "url",
+        required: true,
+      },
+      {
+        key: "funding_ask",
+        label: "Funding ask",
+        placeholder: "$2M seed",
+        required: true,
+      },
+    ],
+    buildPrompt: (v) =>
+      `Please generate a pitch deck for this product URL: ${v.product_url} with funding ask: ${v.funding_ask}`,
+  },
+  {
     id: "outreach",
     label: "Outreach",
     blurb: "Investor intelligence report from site + revenue sheet.",
