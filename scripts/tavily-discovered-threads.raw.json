@@ -1,0 +1,83 @@
+{
+  "requestId": "search",
+  "status": "completed",
+  "model": "search",
+  "prompt": "reddit.com posts where someone on a product team complains about fragmented roadmaps, noisy issue tracking, and slow shipping, and wishes for a unified, AI‑enhanced workflow that streamlines planning, gives real‑time visibility, and automates repetitive tasks",
+  "content": {
+    "threads": [
+      {
+        "url": "https://www.reddit.com/r/ProductManagement/comments/1sigv25/ai_pm_stagnation_how_are_you_actually_leveling_up/",
+        "title": "AI PM Stagnation: how are you actually leveling up your workflow?",
+        "selftext": "# AI PM Stagnation: how are you actually leveling up your workflow?\n\n## Post details\nr/ProductManagement | 39 upvotes | 63 comments | Posted by u/Junior_Buy6997 on 2026-04-11T11:44:15.608Z [...] head. once i started treating that unification as actual infrastructure instead of a \"nice to have,\" the AI went from \"interesting but generic\" to \"genuinely changing how i prioritize.\" how much of your product context does your AI actually have access to right now? or are you still manually feeding it bits and pieces per session? [...] Hi there, colleagues and fellow redditors Feeling a bit stuck in my AI workflow lately and looking to level up. I’ve been in the industry since 2020, and while I’m skeptical of the usual \"AI slop,\" I use LLMs daily for PRDs structuring, I run some rules in Cursor for code reasoning et cetera. Since I lead an internal product team, I’m not really into vibe-coding or prototyping UIs. Instead, I’ve been leaning on NotebookLM to refine sequence diagrams and gut-check architectural stuff across larger context windows. The problem is I’m starting to stagnate. I can't seem to get into a rhythm with Claude’s newer features like Skills or Cowork, and I haven't even touched OpenClaw yet, for example. I feel like I'm stuck in the (2026) basics and missing that \"outside the box\" application. What are",
+        "subreddit": "ProductManagement",
+        "why": "matched Tavily search (reddit.com)"
+      },
+      {
+        "url": "https://www.reddit.com/r/ProductManagement/comments/1s7q7j1/issue_tracking_is_dead_per_linear/",
+        "title": "Issue Tracking is Dead (per Linear)",
+        "selftext": "# Issue Tracking is Dead (per Linear)\n\n## Post details\nr/ProductManagement | 0 upvotes | 12 comments | Posted by u/slowernet on 2026-03-30T13:12:49.073Z\n\n## Content\nIssue tracking is dead. It was built for a handoff model of software development. A PM scoped the work, engineers picked it up later, and the system filled with prioritization, negotiation, and workflows to bridge the gap. That ceremony came from real constraints. Engineering time was scarce. Teams needed a way to route work carefully across roles and functions. In this new world, the next system is not designed around handoffs. It is designed around context and agents. Sounds like PM is becoming part of the dreaded \"overhead\" to be routed around... [...] - More nonsense technobabble “The next system isn’t X it’s Y” Y being more bullshit. Guess what? Building products has always been about context and “agents” other employees. And also guess what you need to “hand off” instructions to agents anyway! This is nothing [...] ## Top Comments\n- Vendors make it sound so easy and straightforward, but there are many challenges. Prompt injection is one example. Human in the loop is still a requirement for many workflows. Who wants to be in a loop if the loop is a slopshow? Many open source projects are closing up PR's unless a human vouches for you because agents produce plausible looking solutions that require a lot of attention to work through. Companies also have to choose whether to transfer the inference cost onto the user, or have it eat into their margins (Notion's example). Fun times for sure, but issue tracking is far from dead.\n- If you’re spending your whole job tracking issues, you aren’t really being an effective PM. Issue tracking should be roughly 10% of the job.",
+        "subreddit": "ProductManagement",
+        "why": "matched Tavily search (reddit.com)"
+      }
+    ]
+  },
+  "sources": [
+    {
+      "title": "AI PM Stagnation: how are you actually leveling up your workflow?",
+      "url": "https://www.reddit.com/r/ProductManagement/comments/1sigv25/ai_pm_stagnation_how_are_you_actually_leveling_up",
+      "content": "# AI PM Stagnation: how are you actually leveling up your workflow?\n\n## Post details\nr/ProductManagement | 39 upvotes | 63 comments | Posted by u/Junior_Buy6997 on 2026-04-11T11:44:15.608Z [...] head. once i started treating that unification as actual infrastructure instead of a \"nice to have,\" the AI went from \"interesting but generic\" to \"genuinely changing how i prioritize.\" how much of your product context does your AI actually have access to right now? or are you still manually feeding it bits and pieces per session? [...] Hi there, colleagues and fellow redditors Feeling a bit stuck in my AI workflow lately and looking to level up. I’ve been in the industry since 2020, and while I’m skeptical of the usual \"AI slop,\" I use LLMs daily for PRDs structuring, I run some rules in Cursor for code reasoning et cetera. Since I lead an internal product team, I’m not really into vibe-coding or prototyping UIs. Instead, I’ve been leaning on NotebookLM to refine sequence diagrams and gut-check architectural stuff across larger context windows. The problem is I’m starting to stagnate. I can't seem to get into a rhythm with Claude’s newer features like Skills or Cowork, and I haven't even touched OpenClaw yet, for example. I feel like I'm stuck in the (2026) basics and missing that \"outside the box\" application. What are",
+      "rawContent": null,
+      "score": 0.5052006
+    },
+    {
+      "title": "Issue Tracking is Dead (per Linear)",
+      "url": "https://www.reddit.com/r/ProductManagement/comments/1s7q7j1/issue_tracking_is_dead_per_linear",
+      "content": "# Issue Tracking is Dead (per Linear)\n\n## Post details\nr/ProductManagement | 0 upvotes | 12 comments | Posted by u/slowernet on 2026-03-30T13:12:49.073Z\n\n## Content\nIssue tracking is dead. It was built for a handoff model of software development. A PM scoped the work, engineers picked it up later, and the system filled with prioritization, negotiation, and workflows to bridge the gap. That ceremony came from real constraints. Engineering time was scarce. Teams needed a way to route work carefully across roles and functions. In this new world, the next system is not designed around handoffs. It is designed around context and agents. Sounds like PM is becoming part of the dreaded \"overhead\" to be routed around... [...] - More nonsense technobabble “The next system isn’t X it’s Y” Y being more bullshit. Guess what? Building products has always been about context and “agents” other employees. And also guess what you need to “hand off” instructions to agents anyway! This is nothing [...] ## Top Comments\n- Vendors make it sound so easy and straightforward, but there are many challenges. Prompt injection is one example. Human in the loop is still a requirement for many workflows. Who wants to be in a loop if the loop is a slopshow? Many open source projects are closing up PR's unless a human vouches for you because agents produce plausible looking solutions that require a lot of attention to work through. Companies also have to choose whether to transfer the inference cost onto the user, or have it eat into their margins (Notion's example). Fun times for sure, but issue tracking is far from dead.\n- If you’re spending your whole job tracking issues, you aren’t really being an effective PM. Issue tracking should be roughly 10% of the job.",
+      "rawContent": null,
+      "score": 0.34448805
+    },
+    {
+      "title": "10 things I wish I knew before diving into AI automation (after building 100+ workflows)",
+      "url": "https://www.reddit.com/r/n8n/comments/1ldvy4n/10_things_i_wish_i_knew_before_diving_into_ai",
+      "content": "# 10 things I wish I knew before diving into AI automation (after building 100+ workflows)\n\n## Post details\nr/n8n | 849 upvotes | 155 comments | Posted by u/Drogoff1489 on 2025-06-17T19:09:39.345Z [...] ## Content [...] ## Top Comments\n- Comment as-tu trouvé tes premiers clients et sur quelle problématique ?\n- Great list! I’ve found adding a quick retry loop in the HTTP node stops many API hiccups. At bakedwith we usually wrap nodes in a small error‑handler that logs the data and pings Slack, which makes fixing bugs a lot easier.\n- tbh the webhook trigger in that workflow you shared is clutch for real-time stuff, i've used similar for pulling leads into my sheets. pairs great with akiflow's universal inbox tho – i dump n8n outputs there and time block without the hassle. ngl, saves me hours weekly.\n- genial, estoy recien iniciando con n8n y es saber todo lo que uno puede hacer con él",
+      "rawContent": null,
+      "score": 0.28729317
+    },
+    {
+      "title": "Why does AI never really stick in most business workflows?",
+      "url": "https://www.reddit.com/r/Entrepreneur/comments/1rpk86k/why_does_ai_never_really_stick_in_most_business",
+      "content": "- The problem isn't the AI it's that most people try to use it for everything instead of specific workflows where it actually saves time. What's worked for me: pick ONE repetitive task (like drafting emails, summarizing calls, or writing first drafts) and build a workflow around that. Once it sticks, add another. Claude is great for reasoning-heavy tasks, ChatGPT for quick stuff with plugins. Here's a comparison: [...] - The pattern I keep seeing is that AI gets introduced as something you go to, rather than something that comes to you. The tools that stick are the ones where the AI shows up in the workflow automatically - a trigger fires, something happens. The ones that fade are the ones that require you to remember to open another tab. Behavior change is the hardest product problem there is, and most AI tools ask for too much of it.\n- You're talking about general-purpose AI tools. AI should be tailored to the specific business workflow to stick with it. You need to clearly understand what tasks AI can do for your business. Unfortunately, people usually try to adopt AI without any strategy and then get disappointed. [...] - Because most AI tools solve cool problems, not real workflow problems . Businesses stick with tools that save time in their daily operations. A lot of AI tools look impressive in demos but don’t integrate into the actual workflow people use every day. If something requires extra steps, training, or changes the process too much, employees simply stop using it. AI sticks when it becomes invisible infrastructure , not a separate tool people must think about.\n- From my experience: AI isnt plug and play in a useful situation. Plug and play AI only works in areas where people don't really need it. Its more of a gimmick than a tool. Real agentic work flies well over most peoples head, and non tech saavy user interfaces don't really exist yet.",
+      "rawContent": null,
+      "score": 0.26629275
+    },
+    {
+      "title": "What has everyone been building with agentic workflows in a corporate setting?",
+      "url": "https://www.reddit.com/r/ExperiencedDevs/comments/1r1chos/what_has_everyone_been_building_with_agentic",
+      "content": "- Most of the multi-agent stuff i see does feels like over-engineered theater. throwing more agents at a problem usually just results in more hallucinated code that someone eventually has to peer-review. it’s a massive distraction from actually shipping. at the company where i work, they’ve basically stopped trying to make agents \"the developers.\" instead, they use them for the invisible technical heavy lifting that everyone hates doing. for example, instead of writing new features, they have agents running gtm health checks and data sanity checks in the background. the agents just sit there and monitor tags or validate analytics in real-time. if something stops firing or the data looks weird, it gets caught before a human even opens a dashboard. it's not flashy, but it's the only way [...] opens a dashboard. it's not flashy, but it's the only way they've found to actually regain any mental space. the machines handle the millisecond-level audits, and the people stay in charge as the architects. solving the \"logistical grind\" is way more useful than trying to get an llm to build a whole app from scratch. [...] ## Top Comments",
+      "rawContent": null,
+      "score": 0.16067418
+    },
+    {
+      "title": "r/AI_Agents",
+      "url": "https://www.reddit.com/r/AI_Agents",
+      "content": "Skip to main contentAI Agents\n\nOpen menu Open navigation, you will be banned. A good ratio is one out of ten posts/comments.\n\n   5\n## No Low Effort Posts \n\nIf your post provides no context, or it is simply meant to drive people off the site and somewhere else, it will be removed.\n\n  \n\n   Home\n   Popular\n   News\n   Explore\n   Best of Reddit\n   Best of Reddit in Portuguese\n   Best of Reddit in German\n   Reddit Rules\n   Privacy Policy\n   User Agreement\n   Accessibility\n   Reddit, Inc. © 2026. All rights reserved.\n\nImage 7\nJoin the most real place on the internet\n\n Continue with Email \n\nBy continuing, you agree to ourUser Agreementand acknowledge that you understand thePrivacy Policy.\n\nImage 8",
+      "rawContent": null,
+      "score": 0.10060457
+    },
+    {
+      "title": "What are some realistic AI/Generative AI business ideas with strong use cases?",
+      "url": "https://www.reddit.com/r/AI_Agents/comments/1jmi9pf/what_are_some_realistic_aigenerative_ai_business",
+      "content": "## Top Comments\n- Couple of ideas I’ve seen actually work, not just theory: - In manufacturing, predictive maintenance + auto scheduling of repairs → saves downtime. - Finance/healthcare: AI doing compliance checks and flagging gaps before audits. - Real estate: smarter property valuations that mix market data + sentiment (agents are starting to pay attention). - Product design: gen AI mockups for furniture, clothing, packaging → smaller teams cut prototyping time way down. The pattern I’ve noticed: tools that slot into day-to-day workflows do way better than generic chatbots. Some startups get help from external dev teams to build industry-specific versions, and those usually stick because they’re actually usable [...] - Don't start broad and general. Here is a more practical approach: pick one niche or industry you already know well or would like to work with. Find one company that is hiring in this sector, take a job description URL Paste in the Job Automation Calculator (  ) to get a detailed breakdown of the tasks and responsibilities for that role with an automation score (+ instructions how to automate). Find a quick-wins that don't require huge investments and don't introduce new risks or complexity to the business. Contact the company with your action plan. Iterate until you find a repeatable problem + solution combo. (This Job Automation Calculator is a tool I've built to help companies automate and build agents smarter, without burning $$ on complex PoC with minimal ROI). [...] - One compelling area is AI-powered contract intelligence for legal or procurement teams - automating clause detection, risk flagging, and compliance checks. Another is generative AI for synthetic data creation in healthcare, where real data is sensitive but models still need to train. Even AI-assisted quality control in manufacturing using vision models has strong ROI. The key is picking a niche with real inefficiencies and embedding AI where it augments existing workflows, not replaces them. Start with industry pain points and work backward from there.",
+      "rawContent": null,
+      "score": 0.09126073
+    },
+    {
+      "title": "r/geotoolsreview",
+      "url": "https://www.reddit.com/r/geotoolsreview",
+      "content": "Image 1\n\n# Prove your humanity\n\nWe’re committed to safety and security. But not for bots. Complete the challenge below and let us know you’re a real person.\n\nReddit, Inc. © \"2026\". All rights reserved.\n\nUser AgreementPrivacy PolicyContent PolicyHelp",
+      "rawContent": null,
+      "score": 0.029027443
+    }
+  ],
+  "elapsedMs": 3967
+}
