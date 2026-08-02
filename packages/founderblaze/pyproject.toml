@@ -30,6 +30,7 @@ founderblaze-outreach-live = "founderblaze.outreach.live:main"
 founderblaze-social-listening-live = "founderblaze.social_listening.live:main"
 founderblaze-promo-video-live = "founderblaze.promo_video.live:main"
 founderblaze-competitor-research-live = "founderblaze.competitor_research.live:main"
+founderblaze-app-kit-live = "founderblaze.app_kit.live:main"
 founderblaze-mcp = "founderblaze.mcp_server.stdio:main"
 
 [build-system]

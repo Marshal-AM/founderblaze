@@ -7,6 +7,7 @@ from typing import Any
 from temporalio import activity
 
 from founderblaze.apd import run_apd_pipeline
+from founderblaze.app_kit import run_app_kit_pipeline
 from founderblaze.brand_kit import run_brand_kit_pipeline
 from founderblaze.core.config import get_settings
 from founderblaze.core.jobs.store import get_job_store
@@ -127,6 +128,67 @@ async def run_brand_kit_activity(job_id: str) -> dict[str, Any]:
         )
     except Exception as exc:  # noqa: BLE001
         log.exception("brand-kit pipeline failed job_id=%s", job_id)
+        await store.set_status(job_id, JobStatus.FAILED, error=str(exc)[:2000])
+        raise
+
+    artifacts = [Artifact.model_validate(a) for a in result.get("artifacts") or []]
+    await store.update(
+        job_id,
+        status=JobStatus.COMPLETED,
+        artifacts=artifacts,
+        error=None,
+        step="completed",
+    )
+    return result
+
+
+@activity.defn(name="run_app_kit_activity")
+async def run_app_kit_activity(job_id: str) -> dict[str, Any]:
+    settings = get_settings()
+    store = await get_job_store()
+    job = await store.get(job_id)
+    if not job:
+        raise RuntimeError(f"job not found: {job_id}")
+
+    await store.set_status(job_id, JobStatus.RUNNING, error=None)
+    await store.set_step(job_id, "starting")
+
+    product_name = str(job.input.get("product_name") or "").strip()
+    product_idea = str(job.input.get("product_idea") or "").strip()
+    brand_kit_url = job.input.get("brand_kit_url")
+    brand_kit_url_s = str(brand_kit_url).strip() if brand_kit_url else None
+    if not product_name or not product_idea:
+        await store.set_status(
+            job_id, JobStatus.FAILED, error="missing product_name or product_idea"
+        )
+        raise RuntimeError("invalid app-kit input")
+
+    loop = asyncio.get_running_loop()
+
+    def set_step(name: str) -> None:
+        fut = asyncio.run_coroutine_threadsafe(store.set_step(job_id, name), loop)
+        try:
+            fut.result(timeout=15)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("set_step failed: %s", exc)
+
+    on_step = make_on_step_complete(
+        set_step=set_step,
+        heartbeat=lambda label: activity.heartbeat(label),
+    )
+
+    try:
+        result = await asyncio.to_thread(
+            run_app_kit_pipeline,
+            job_id=job_id,
+            product_name=product_name,
+            product_idea=product_idea,
+            brand_kit_url=brand_kit_url_s,
+            on_step_complete=on_step,
+            settings=settings,
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.exception("app-kit pipeline failed job_id=%s", job_id)
         await store.set_status(job_id, JobStatus.FAILED, error=str(exc)[:2000])
         raise
 

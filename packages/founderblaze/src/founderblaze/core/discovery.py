@@ -140,5 +140,6 @@ def build_discovery_document(*, base_url: str | None = None) -> dict[str, Any]:
             ServiceName.SOCIAL_LISTENING.value,
             ServiceName.PROMO_VIDEO.value,
             ServiceName.COMPETITOR_RESEARCH.value,
+            ServiceName.APP_KIT.value,
         ],
     }

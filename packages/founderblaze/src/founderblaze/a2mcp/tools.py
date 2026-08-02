@@ -7,6 +7,7 @@ from pydantic import BaseModel, ValidationError
 from founderblaze.core.schemas.models import (
     SERVICE_MANIFESTS,
     ApdInput,
+    AppKitInput,
     BrandKitInput,
     CompetitorResearchInput,
     OutreachInput,
@@ -22,6 +23,7 @@ _INPUT_MODELS: dict[ServiceName, type[BaseModel]] = {
     ServiceName.SOCIAL_LISTENING: SocialListeningInput,
     ServiceName.PROMO_VIDEO: PromoVideoInput,
     ServiceName.COMPETITOR_RESEARCH: CompetitorResearchInput,
+    ServiceName.APP_KIT: AppKitInput,
 }
 
 

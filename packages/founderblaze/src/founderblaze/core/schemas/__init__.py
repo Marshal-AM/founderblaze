@@ -1,6 +1,7 @@
 ﻿from founderblaze.core.schemas.models import (
     SERVICE_MANIFESTS,
     ApdInput,
+    AppKitInput,
     Artifact,
     BrandKitInput,
     CompetitorResearchInput,
@@ -17,6 +18,7 @@
 __all__ = [
     "SERVICE_MANIFESTS",
     "ApdInput",
+    "AppKitInput",
     "Artifact",
     "BrandKitInput",
     "CompetitorResearchInput",

@@ -17,6 +17,7 @@ from founderblaze.core.logging import setup_logging
 from founderblaze.core.schemas.models import (
     SERVICE_MANIFESTS,
     ApdInput,
+    AppKitInput,
     BrandKitInput,
     CreateJobRequest,
     JobStatus,
@@ -41,6 +42,7 @@ _WORKFLOWS: dict[ServiceName, tuple[str, str]] = {
         "CompetitorResearchWorkflow",
         "competitor-research",
     ),
+    ServiceName.APP_KIT: ("AppKitWorkflow", "app-kit"),
 }
 
 
@@ -162,6 +164,8 @@ async def create_job(
             PromoVideoInput.model_validate(req.input)
         elif service_name == ServiceName.COMPETITOR_RESEARCH:
             CompetitorResearchInput.model_validate(req.input)
+        elif service_name == ServiceName.APP_KIT:
+            AppKitInput.model_validate(req.input)
     except ValidationError as exc:
         raise HTTPException(
             status_code=400,

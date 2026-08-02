@@ -14,6 +14,7 @@ class ServiceName(str, Enum):
     SOCIAL_LISTENING = "social-listening"
     PROMO_VIDEO = "promo-video"
     COMPETITOR_RESEARCH = "competitor-research"
+    APP_KIT = "app-kit"
 
 
 class JobStatus(str, Enum):
@@ -88,6 +89,12 @@ class PromoVideoInput(BaseModel):
 class CompetitorResearchInput(BaseModel):
     product_name: str = Field(min_length=1, max_length=120)
     product_url: HttpUrl | None = None
+
+
+class AppKitInput(BaseModel):
+    product_name: str = Field(min_length=1, max_length=80)
+    product_idea: str = Field(min_length=10, max_length=4000)
+    brand_kit_url: HttpUrl | None = None
 
 
 class JobRecord(BaseModel):
@@ -255,6 +262,38 @@ SERVICE_MANIFESTS: dict[ServiceName, dict[str, Any]] = {
                 "type": "report_pdf",
                 "mime_type": "application/pdf",
                 "description": "Competitive intelligence PDF",
+            }
+        ],
+    },
+    ServiceName.APP_KIT: {
+        "name": ServiceName.APP_KIT.value,
+        "title": "App Kit",
+        "a2mcp_price_usd": 1.49,
+        "sla_minutes": 25,
+        "endpoint_path": "/v1/services/app-kit/jobs",
+        "summary": (
+            "Plans a product IA and generates beautiful desktop + mobile UI mock "
+            "screens as a downloadable ZIP."
+        ),
+        "provide": (
+            "product_name and product_idea (required). Optional: brand_kit_url "
+            "(downloadable brand-kit ZIP to style screens)."
+        ),
+        "deliverable": "ZIP of desktop/ and mobile/ UI mock PNGs (Backblaze URL)",
+        "example_request": {
+            "input": {
+                "product_name": "Solace",
+                "product_idea": (
+                    "A calm meditation app with guided sessions, streaks, and "
+                    "a personal journal."
+                ),
+            }
+        },
+        "example_artifacts": [
+            {
+                "type": "app_kit_zip",
+                "mime_type": "application/zip",
+                "description": "Desktop + mobile UI mock ZIP",
             }
         ],
     },

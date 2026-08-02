@@ -12,6 +12,7 @@ from founderblaze.core.jobs.store import create_pool
 from founderblaze.core.logging import setup_logging
 from founderblaze_worker.activities import (
     run_apd_activity,
+    run_app_kit_activity,
     run_brand_kit_activity,
     run_competitor_research_activity,
     run_outreach_activity,
@@ -20,6 +21,7 @@ from founderblaze_worker.activities import (
 )
 from founderblaze_worker.workflows import (
     ApdWorkflow,
+    AppKitWorkflow,
     BrandKitWorkflow,
     CompetitorResearchWorkflow,
     OutreachWorkflow,
@@ -57,6 +59,7 @@ async def async_main() -> None:
             SocialListeningWorkflow,
             PromoVideoWorkflow,
             CompetitorResearchWorkflow,
+            AppKitWorkflow,
         ],
         activities=[
             run_apd_activity,
@@ -65,6 +68,7 @@ async def async_main() -> None:
             run_social_listening_activity,
             run_promo_video_activity,
             run_competitor_research_activity,
+            run_app_kit_activity,
         ],
     )
     log.info(
