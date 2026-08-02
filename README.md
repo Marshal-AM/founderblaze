@@ -4,7 +4,7 @@
 
 FounderBlaze is an **application** where solo founders chat with an **entrypoint AI agent** that analyzes the request and **delegates** to specialized multi-agent pipelines — promo videos, product demos, competitor reports, investor outreach packs, Reddit engagement playbooks, production-ready brand kits, and desktop/mobile UI appkit packs. Pipelines run on **Genblaze**, deliverables land on **Backblaze B2**, and the same catalog is exposed over **A2MCP** jobs plus a real **MCP** tool server.
 
-This is not a template library. **This is the ENTIRE non-engineering department — automated — for the one-person billion-dollar company era.**
+This is not a template library. **This is an ENTIRE collection of non-engineering departments — automated — for the one-person billion-dollar company era.**
 
 ---
 
