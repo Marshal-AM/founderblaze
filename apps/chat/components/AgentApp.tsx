@@ -3,11 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { useSession } from "next-auth/react";
-import { PanelLeft, PanelRight } from "lucide-react";
+import { PanelLeft } from "lucide-react";
 import { AuthControls } from "./AuthControls";
 import { AuthModal } from "./AuthModal";
 import { AssetsDialog } from "./AssetsDialog";
-import { CapabilitiesPanel } from "./CapabilitiesPanel";
 import { ChatWorkspace } from "./ChatWorkspace";
 import { ThreadSidebar, type ThreadSummary } from "./ThreadSidebar";
 
@@ -19,7 +18,6 @@ export function AgentApp({ googleEnabled }: { googleEnabled: boolean }) {
   const [assetsOpen, setAssetsOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [leftOpen, setLeftOpen] = useState(true);
-  const [rightOpen, setRightOpen] = useState(true);
 
   const refreshThreads = useCallback(async () => {
     if (!session?.user) {
@@ -46,11 +44,7 @@ export function AgentApp({ googleEnabled }: { googleEnabled: boolean }) {
     setThreadId(null);
   }
 
-  const gridClass = [
-    "workspace-grid",
-    !leftOpen ? "left-collapsed" : "",
-    !rightOpen ? "right-collapsed" : "",
-  ]
+  const gridClass = ["workspace-grid", !leftOpen ? "left-collapsed" : ""]
     .filter(Boolean)
     .join(" ");
 
@@ -62,8 +56,8 @@ export function AgentApp({ googleEnabled }: { googleEnabled: boolean }) {
             <Image
               src="/founderblaze-logo.png"
               alt="FounderBlaze"
-              width={260}
-              height={52}
+              width={210}
+              height={42}
               className="brand-logo"
               priority
             />
@@ -102,20 +96,6 @@ export function AgentApp({ googleEnabled }: { googleEnabled: boolean }) {
             onHistoryChanged={refreshThreads}
             onRequestSignIn={() => setAuthOpen(true)}
           />
-
-          {rightOpen ? (
-            <CapabilitiesPanel onCollapse={() => setRightOpen(false)} />
-          ) : (
-            <button
-              type="button"
-              className="sidebar-rail"
-              onClick={() => setRightOpen(true)}
-              title="Show services"
-              aria-label="Show services"
-            >
-              <PanelRight className="h-4 w-4" />
-            </button>
-          )}
         </div>
       </main>
 

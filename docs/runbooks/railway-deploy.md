@@ -154,7 +154,7 @@ Playwright browsers are installed **in the image** (`PLAYWRIGHT_BROWSERS_PATH=/m
 ```bash
 PORT=${{PORT}}
 FOUNDERBLAZE_A2MCP_BASE_URL=http://api.railway.internal:8080
-AGENT_CORS_ORIGINS=https://<chat-public-host>
+AGENT_CORS_ORIGINS=https://founderblaze.up.railway.app
 GEMINI_API_KEY=...
 AGENT_GEMINI_MODEL=gemini-3.1-pro-preview
 GEMINI_TEXT_MODEL=gemini-2.5-flash
@@ -177,8 +177,8 @@ PORT=${{PORT}}
 DATABASE_URL=${{postgres.DATABASE_URL}}
 AGENT_URL=http://agent.railway.internal:8080
 AUTH_SECRET=<random-32+-bytes>
-AUTH_URL=https://<chat-public-host>
-# optional Google OAuth — redirect URI = https://<chat>/api/auth/callback/google
+AUTH_URL=https://founderblaze.up.railway.app
+# optional Google OAuth — redirect URI = https://founderblaze.up.railway.app/api/auth/callback/google
 AUTH_GOOGLE_ID=...
 AUTH_GOOGLE_SECRET=...
 ```

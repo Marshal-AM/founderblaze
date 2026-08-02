@@ -1,8 +1,14 @@
 import { getPool } from "./db";
 
+/**
+ * Auth.js `@auth/pg-adapter` inserts users/accounts/sessions without an `id`
+ * and expects DB defaults. It also uses singular `verification_token`.
+ */
 const SQL = `
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE IF NOT EXISTS users (
-  id TEXT PRIMARY KEY,
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   name TEXT,
   email TEXT UNIQUE,
   "emailVerified" TIMESTAMPTZ,
@@ -11,7 +17,7 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE TABLE IF NOT EXISTS accounts (
-  id TEXT PRIMARY KEY,
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   "userId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   type TEXT NOT NULL,
   provider TEXT NOT NULL,
@@ -27,13 +33,13 @@ CREATE TABLE IF NOT EXISTS accounts (
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
-  id TEXT PRIMARY KEY,
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   "sessionToken" TEXT NOT NULL UNIQUE,
   "userId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   expires TIMESTAMPTZ NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS verification_tokens (
+CREATE TABLE IF NOT EXISTS verification_token (
   identifier TEXT NOT NULL,
   token TEXT NOT NULL,
   expires TIMESTAMPTZ NOT NULL,
@@ -92,9 +98,21 @@ export async function ensureChatSchema(): Promise<void> {
   if (migrated) return;
   const pool = getPool();
   await pool.query(SQL);
-  // Ensure custom column exists on older Auth.js installs
-  await pool.query(
-    `ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT`
-  );
+  // Upgrade existing installs that created tables without defaults / wrong names
+  await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
+    ALTER TABLE users ALTER COLUMN id SET DEFAULT gen_random_uuid()::text;
+    ALTER TABLE accounts ALTER COLUMN id SET DEFAULT gen_random_uuid()::text;
+    ALTER TABLE sessions ALTER COLUMN id SET DEFAULT gen_random_uuid()::text;
+  `);
+  // Prefer Auth.js singular table; keep plural copy if it already exists empty
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS verification_token (
+      identifier TEXT NOT NULL,
+      token TEXT NOT NULL,
+      expires TIMESTAMPTZ NOT NULL,
+      PRIMARY KEY (identifier, token)
+    );
+  `);
   migrated = true;
 }
