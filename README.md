@@ -130,7 +130,7 @@ Genblaze is **load-bearing** for FounderBlaze. It is not an optional SDK bolted 
 
 ### What Genblaze is in this repo
 
-FounderBlaze consumes Genblaze as editable path dependencies (wired in [`packages/founderblaze/pyproject.toml`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/pyproject.toml#L46-L50) → `[tool.uv.sources]`). The SDK checkout lives under `reference/genblaze/` locally (**gitignored** — not on GitHub); the FounderBlaze integration code below is what ships in this repo.
+FounderBlaze consumes Genblaze as editable path dependencies (wired in [`packages/founderblaze/pyproject.toml`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/pyproject.toml#L46-L50) → `[tool.uv.sources]`). 
 
 | Package | Role | Declared in |
 |---------|------|-------------|
