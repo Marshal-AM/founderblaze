@@ -1,0 +1,49 @@
+[project]
+name = "founderblaze"
+version = "0.1.0"
+description = "FounderBlaze monorepo — A2MCP services, MCP server, and agent"
+requires-python = ">=3.11"
+dependencies = [
+  "genblaze-core>=0.3.8,<0.4",
+  "genblaze-s3>=0.3.6,<0.4",
+  "genblaze-lmnt>=0.3.3,<0.4",
+  "genblaze-google>=0.3.4,<0.4",
+  "pydantic>=2.10",
+  "pydantic-settings>=2.7",
+  "asyncpg>=0.30",
+  "httpx>=0.28",
+  "firecrawl-py>=1.0",
+  "playwright>=1.49",
+  "imageio-ffmpeg>=0.5",
+  "pillow>=10.0",
+  "exa-py>=1.0",
+  "openpyxl>=3.1",
+  "mcp>=1.0",
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.34",
+]
+
+[project.scripts]
+founderblaze-apd-live = "founderblaze.apd.live:main"
+founderblaze-brand-kit-live = "founderblaze.brand_kit.live:main"
+founderblaze-outreach-live = "founderblaze.outreach.live:main"
+founderblaze-social-listening-live = "founderblaze.social_listening.live:main"
+founderblaze-promo-video-live = "founderblaze.promo_video.live:main"
+founderblaze-competitor-research-live = "founderblaze.competitor_research.live:main"
+founderblaze-mcp = "founderblaze.mcp_server.stdio:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/founderblaze"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src/founderblaze" = "founderblaze"
+
+[tool.uv.sources]
+genblaze-core = { path = "../../reference/genblaze/libs/core", editable = true }
+genblaze-s3 = { path = "../../reference/genblaze/libs/connectors/s3", editable = true }
+genblaze-lmnt = { path = "../../reference/genblaze/libs/connectors/lmnt", editable = true }
+genblaze-google = { path = "../../reference/genblaze/libs/connectors/google", editable = true }
