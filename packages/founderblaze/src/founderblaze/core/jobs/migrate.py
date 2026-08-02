@@ -38,8 +38,18 @@ CREATE INDEX IF NOT EXISTS jobs_queued_created_at_idx
   WHERE status = 'queued';
 """
 
+# Older DBs may have applied 001 before workflow_id / dispatch columns existed.
+JOBS_COLUMNS_SQL = """
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS step TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS workflow_id TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS dispatched_at TIMESTAMPTZ;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS dispatch_error TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS eta_seconds INTEGER;
+"""
+
 MIGRATIONS = [
     ("001_jobs", JOBS_SQL),
+    ("002_jobs_workflow_columns", JOBS_COLUMNS_SQL),
 ]
 
 
