@@ -52,6 +52,7 @@ def _row_to_job(row: asyncpg.Record) -> JobRecord:
     input_raw = row["input"]
     if isinstance(input_raw, str):
         input_raw = json.loads(input_raw)
+    keys = set(row.keys())
     return JobRecord(
         id=str(row["id"]),
         service=ServiceName(row["service"]),
@@ -63,11 +64,11 @@ def _row_to_job(row: asyncpg.Record) -> JobRecord:
         error=row["error"],
         callback_url=row["callback_url"],
         idempotency_key=row["idempotency_key"],
-        workflow_id=row["workflow_id"],
-        dispatched_at=row["dispatched_at"],
-        dispatch_error=row["dispatch_error"],
-        eta_seconds=row["eta_seconds"],
-        step=row["step"],
+        workflow_id=row["workflow_id"] if "workflow_id" in keys else None,
+        dispatched_at=row["dispatched_at"] if "dispatched_at" in keys else None,
+        dispatch_error=row["dispatch_error"] if "dispatch_error" in keys else None,
+        eta_seconds=row["eta_seconds"] if "eta_seconds" in keys else None,
+        step=row["step"] if "step" in keys else None,
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
