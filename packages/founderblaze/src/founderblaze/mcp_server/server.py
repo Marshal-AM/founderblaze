@@ -45,10 +45,14 @@ async def run_tool_call(
     return {
         "service": service,
         "job_id": result.get("job_id"),
-        "status": job.get("status") or "queued",
+        "status": job.get("status")
+        or (result.get("created") or {}).get("status")
+        or "queued",
+        "step": job.get("step") or "starting",
         "artifacts": job.get("artifacts") or [],
         "error": job.get("error"),
         "created": result.get("created"),
+        "job": job or None,
     }
 
 
