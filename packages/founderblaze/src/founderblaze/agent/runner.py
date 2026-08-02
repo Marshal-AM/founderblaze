@@ -260,8 +260,13 @@ async def run_agent(
     *,
     session_id: str | None = None,
     history: list[dict[str, str]] | None = None,
+    wait_for_jobs: bool = True,
 ) -> dict[str, Any]:
-    """Run one Gemini tool-calling turn (optionally multi-step)."""
+    """Run one Gemini tool-calling turn (optionally multi-step).
+
+    When wait_for_jobs is False (chat UI), create jobs and return immediately so
+    the client can poll GET /v1/agent/jobs/{id} for live step progress.
+    """
     settings = get_settings()
     api_key = settings.gemini_api_key or os.environ.get("GEMINI_API_KEY", "")
     model = settings.resolved_agent_gemini_model
@@ -324,9 +329,14 @@ async def run_agent(
             blocked_replies.append(gate)
             continue
 
-        log.info("agent calling tool=%s args_keys=%s", name, list(args.keys()))
+        log.info(
+            "agent calling tool=%s wait_for_jobs=%s args_keys=%s",
+            name,
+            wait_for_jobs,
+            list(args.keys()),
+        )
         try:
-            result = await run_tool_call(name, args)
+            result = await run_tool_call(name, args, poll=wait_for_jobs)
             tool_calls_out.append({"name": name, "arguments": args, "ok": True})
             jobs.append(
                 {
@@ -334,6 +344,9 @@ async def run_agent(
                     "service": result.get("service"),
                     "status": result.get("status"),
                     "error": result.get("error"),
+                    "step": (result.get("job") or {}).get("step")
+                    or result.get("step")
+                    or ("queued" if not wait_for_jobs else None),
                 }
             )
             for a in result.get("artifacts") or []:
@@ -356,6 +369,25 @@ async def run_agent(
             "tool_calls": tool_calls_out,
             "jobs": [],
             "artifacts": [],
+        }
+
+    # Chat path: return immediately so the UI can poll live pipeline status.
+    if not wait_for_jobs and jobs:
+        titles = []
+        for j in jobs:
+            svc = str(j.get("service") or "pipeline")
+            titles.append(svc.replace("-", " "))
+        started = ", ".join(titles) if titles else "your request"
+        return {
+            "session_id": sid,
+            "reply": (
+                reply_text
+                or f"Started {started}. I'll surface each pipeline step live as it runs."
+            ),
+            "tool_calls": tool_calls_out,
+            "jobs": jobs,
+            "artifacts": artifacts,
+            "pending": True,
         }
 
     follow = (
