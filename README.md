@@ -2,7 +2,7 @@
 
 > **Solo Founders don't need a team. They need 8 Agentic Services**
 
-FounderBlaze is an **application** where solo founders chat with an **entrypoint AI agent** that analyzes the request and **delegates** to specialized multi-agent pipelines — promo videos, product demos, competitor reports, investor outreach packs, Reddit engagement playbooks, production-ready brand kits, desktop/mobile UI appkit packs, and investor pitch decks. Pipelines run on **Genblaze**, deliverables land on **Backblaze B2**, and the same catalog is exposed over **A2MCP** jobs plus a real **MCP** tool server.
+FounderBlaze is an **application** where solo founders chat with an **entrypoint AI agent** that analyzes the request and **delegates** to specialized multi-agent pipelines — promo videos, product demos, competitor reports, investor outreach packs, Reddit engagement playbooks, production-ready brand kits, mobile + desktop UI kit boards (App Kit), and investor pitch decks. Pipelines run on **Genblaze**, deliverables land on **Backblaze B2**, and the same catalog is exposed over **A2MCP** jobs plus a real **MCP** tool server.
 
 This is not a template library. **This is an ENTIRE collection of non-engineering departments — automated — for the one-person billion-dollar company era.**
 
@@ -26,7 +26,8 @@ This is not a template library. **This is an ENTIRE collection of non-engineerin
 14. [Service 7 — App Kit](#service-7--app-kit)
 15. [Service 8 — Pitch Deck](#service-8--pitch-deck)
 16. [Universal API Reference](#universal-api-reference)
-17. [Conclusion](#conclusion)
+17. [Feedback](#feedback)
+18. [Conclusion](#conclusion)
 
 ---
 
@@ -81,7 +82,7 @@ That gap is exactly what FounderBlaze exists to close.
 
 **FounderBlaze is an entire non-tech team for Solo Founders — an app plus an entrypoint AI agent that routes work to eight specialized multi-agent services.**
 
-From your product URL to a polished promo video. From a natural-language script to a narrated screen recording of your live app. From a brand name and a two-sentence brief to a downloadable ZIP of logos, fonts, colors, and social banners. From a product name and idea to desktop + mobile UI mock screens styled to that brand. From a product URL and funding ask to a 6–8 page investor pitch deck PDF matched to your design language. From your website and revenue spreadsheet to an investor intelligence report with verified contacts. From your product category to a five-competitor analysis with SWOT, pricing matrices, and positioning maps. From your landing page to a curated list of Reddit threads with draft responses ready to post.
+From your product URL to a polished promo video. From a natural-language script to a narrated screen recording of your live app. From a brand name and a two-sentence brief to a downloadable ZIP of logos, fonts, colors, and social banners. From a product name and idea to two multi-screen UI kit boards (phone + desktop) styled to that brand. From a product URL and funding ask to a 6–8 page investor pitch deck PDF matched to your design language. From your website and revenue spreadsheet to an investor intelligence report with verified contacts. From your product category to a five-competitor analysis with SWOT, pricing matrices, and positioning maps. From your landing page to a curated list of Reddit threads with draft responses ready to post.
 
 **A to Z. One platform. Eight services. Zero headcount.**
 
@@ -97,7 +98,7 @@ From your product URL to a polished promo video. From a natural-language script 
 | **Outreach** | Investor intelligence report from website + revenue data |
 | **Competitor Research** | Full competitor analysis report (PDF) |
 | **Brand Kit** | Complete brand identity ZIP (logos, fonts, colors, assets) |
-| **App Kit** | Desktop + mobile UI mock ZIP for every planned screen |
+| **App Kit** | ZIP with two multi-screen UI kit boards (mobile + desktop) |
 | **Pitch Deck** | 6–8 page investor pitch deck PDF from product URL + funding ask |
 
 Every service follows the same contract:
@@ -148,9 +149,24 @@ Every live service follows the same contract:
 1. **Build a `Pipeline(name, tenant_id=job_id, project_id=…)`** and chain `.step(provider, model=…, modality=…, input_from=…)` for fan-in.
 2. **Run with an optional sink:** `Pipeline.run(sink=build_b2_sink(...), on_step_complete=…, pipeline_timeout=…)`.
 3. **Pick the primary asset** from the finished run (`pick_final_video_asset` / `pick_final_pdf_asset` / service-local `pick_final_zip_asset`).
-4. **Finalize Genblaze provenance** via `finalize_run_provenance` (+ `finalize_chart_provenance` when insight charts exist), then `merge_provenance` onto the job artifact dict.
+4. **Finalize Genblaze provenance** via `finalize_run_provenance`, then `merge_provenance` onto the job artifact dict. (A `finalize_chart_provenance` helper still exists for optional chart sidecars, but live PDF pipelines embed charts in the PDF and upload **only** the PDF as the primary B2 deliverable.)
 
-Temporal does not reimplement that graph. The worker activity calls `run_*_pipeline(...)` and wires Genblaze step events into job `step` + heartbeats through [`make_on_step_complete`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/temporal_bridge.py#L9).
+Temporal does not reimplement that graph. The worker activity calls `run_*_pipeline(...)` (via `asyncio.to_thread`) and wires Genblaze step events into job `step` + heartbeats through [`make_on_step_complete`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/temporal_bridge.py#L14). Heartbeats from worker threads use [`make_threadsafe_heartbeat`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/temporal_bridge.py#L46) plus [`heartbeat_keepalive`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/temporal_bridge.py#L88) (wired in [`activities.py`](https://github.com/Marshal-AM/founderblaze/blob/main/apps/worker/src/founderblaze_worker/activities.py#L30) / [`_run_pipeline_thread`](https://github.com/Marshal-AM/founderblaze/blob/main/apps/worker/src/founderblaze_worker/activities.py#L47)) so long Gemini/PDF steps do not miss Temporal’s heartbeat timeout.
+
+### Gemini transient retries (FounderBlaze wrapper)
+
+Genblaze’s standalone `chat(retry_on_rate_limit=True)` path uses `call_with_rate_limit_retry`, which only retries **429** (`RATE_LIMIT`). Gemini **503 UNAVAILABLE / high demand** maps to `SERVER_ERROR` and fails immediately on that path — even though `RetryPolicy` defaults already list `SERVER_ERROR` as retryable for some `BaseProvider` poll/fetch loops. There is no `retry_on_server_error=` flag for `chat`.
+
+FounderBlaze therefore wraps Gemini text/image calls in [`core/gemini_retry.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/gemini_retry.py):
+
+| Helper | Role | Link |
+|--------|------|------|
+| `DEFAULT_GEMINI_RETRY_POLICY` | Flat ~30s backoff, honors `Retry-After` | [L29](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/gemini_retry.py#L29) |
+| `call_with_transient_retry` | Retries any `RetryPolicy.should_retry` code (429 + 503 + timeout) | [L44](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/gemini_retry.py#L44) |
+| `chat_with_retry` | Wraps Genblaze `chat` | [L92](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/gemini_retry.py#L92) |
+| `generate_content_with_retry` | Wraps Gemini `generate_content` | [L131](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/gemini_retry.py#L131) |
+
+Retries apply to the **failed call in place** — they do not restart a Genblaze pipeline from the top. See [Feedback](#feedback) and upstream [genblaze#264](https://github.com/backblaze-labs/genblaze/issues/264).
 
 ### Code map — Genblaze entrypoints
 
@@ -162,13 +178,15 @@ Temporal does not reimplement that graph. The worker activity calls `run_*_pipel
 | Outreach | [`run_outreach_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L35) | Sheet → Website → Revenue → Investors → Portfolio → Partners → Enrich → VisualInsights → CompileReport → sink |
 | Competitor Research | [`run_competitor_research_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L36) | Find → Evidence → Features → Pricing → Positioning → VisualInsights → CompileReport → **required** sink |
 | Brand Kit | [`run_brand_kit_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L33) | Analyze → Logos → Palette → Fonts → Visuals → Icons → Banner → Zip → sink |
-| App Kit | [`run_app_kit_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L29) | PlanScreens → BrandContext → Screens (`IMAGE`) → Zip → sink |
+| App Kit | [`run_app_kit_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L29) | PlanScreens → BrandContext → Screens (`IMAGE`, 2 UI kit boards) → Zip → sink |
 | Pitch Deck | [`run_pitch_deck_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/pitch_deck/pipeline.py#L30) | Research → Design → Plan (6–8) → Slides (`IMAGE`) → PdfCompile → sink |
 
 Shared Genblaze↔storage glue:
 
 - [`core/storage/b2.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py) — [`build_b2_sink`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L29), [`pick_final_video_asset`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L121), [`pick_final_pdf_asset`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L148), [`resolve_download_url`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L56)
-- [`core/storage/provenance.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py) — [`finalize_run_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L69), [`finalize_chart_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L209), [`merge_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L289)
+- [`core/storage/provenance.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py) — [`finalize_run_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L69), [`merge_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L289) (optional [`finalize_chart_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L209) helper; PDF services do not upload separate chart artifacts)
+- [`core/gemini_retry.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/gemini_retry.py) — FounderBlaze transient Gemini retries (`chat_with_retry` / `generate_content_with_retry`)
+- [`core/temporal_bridge.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/temporal_bridge.py) — step-complete → job step + thread-safe Temporal heartbeats
 
 ### Why Genblaze is load-bearing
 
@@ -201,7 +219,7 @@ When a pipeline calls `Pipeline.run(sink=build_b2_sink(service="brand-kit"))`, G
 2. Calls [`finalize_run_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L69) — verifies the Genblaze manifest, writes `{object_key}.genblaze.json`, optionally uploads the sidecar beside the object
 3. Merges provenance fields onto the artifact via [`merge_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L289)
 
-**Modes:** MP4 uses **pointer** provenance; PDF / ZIP use **sidecar** provenance. Insight charts (outreach / social / competitor) go through [`finalize_chart_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L209).
+**Modes:** MP4 uses **pointer** provenance; PDF / ZIP use **sidecar** provenance. Insight charts for outreach / social / competitor are **embedded in the PDF**; those pipelines upload the PDF (plus sidecar) only — not separate chart PNG job artifacts.
 
 ### Where objects live
 
@@ -209,9 +227,9 @@ When a pipeline calls `Pipeline.run(sink=build_b2_sink(service="brand-kit"))`, G
 |--------------|-----------|------------------|
 | `promo-video` | `founderblaze/promo-video/` | MP4 |
 | `automated-product-demo` | `founderblaze/automated-product-demo/` | MP4 |
-| `social-listening` | `founderblaze/social-listening/` | PDF (+ chart PNGs) |
-| `outreach` | `founderblaze/outreach/` | PDF (+ chart PNGs) |
-| `competitor-research` | `founderblaze/competitor-research/` | PDF (+ chart PNGs) |
+| `social-listening` | `founderblaze/social-listening/` | PDF (charts embedded) |
+| `outreach` | `founderblaze/outreach/` | PDF (charts embedded) |
+| `competitor-research` | `founderblaze/competitor-research/` | PDF (charts embedded) |
 | `brand-kit` | `founderblaze/brand-kit/` | ZIP |
 | `app-kit` | `founderblaze/app-kit/` | ZIP |
 | `pitch-deck` | `founderblaze/pitch-deck/` | PDF |
@@ -397,11 +415,11 @@ Promo Video is a **two-phase Genblaze execution**: a generation DAG that keeps t
 | `PersistVideoProvider` | Persist helper provider | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/persist_provider.py#L15), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/persist_provider.py#L30) |
 | `ConcatVideoProvider` | Optional concat path | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/concat_provider.py#L15), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/concat_provider.py#L24) |
 
-**`genblaze_google` text calls** — [`from genblaze_google import chat`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/gemini_chat.py#L9); used at [`chat(...)` L33](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/gemini_chat.py#L33) and grounded [`chat(... tools=)` L65](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/gemini_chat.py#L65). Script step imports that helper via [`gemini_json`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/script_provider.py#L11).
+**Gemini text via FounderBlaze retry wrapper** — [`chat_with_retry` import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/gemini_chat.py#L9) (from [`gemini_retry.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/gemini_retry.py#L92); wraps Genblaze chat and retries 429 + 503); used at [`chat_with_retry(...)` L33](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/gemini_chat.py#L33) and grounded [`chat_with_retry(... tools=)` L65](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/gemini_chat.py#L65). Script step imports that helper via [`gemini_json`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/script_provider.py#L11).
 
 **Genblaze `Asset` helpers** — [`from genblaze_core import Asset`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/_assets.py#L9); constructors at [L26](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/_assets.py#L26) / [L42](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/_assets.py#L42).
 
-**After run** — [`pick_final_video_asset`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L161), [`finalize_run_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L175), [`merge_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L184). Sink built at [`build_b2_sink(service="promo-video")`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L78). Worker step events: [`make_on_step_complete`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/temporal_bridge.py#L9).
+**After run** — [`pick_final_video_asset`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L161), [`finalize_run_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L175), [`merge_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L184). Sink built at [`build_b2_sink(service="promo-video")`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/promo_video/pipeline.py#L78). Worker step events: [`make_on_step_complete`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/temporal_bridge.py#L14).
 
 ### Backblaze usage
 
@@ -819,9 +837,9 @@ APD is a **single three-step Genblaze DAG** that plans browser actions, records 
 | `RecordProvider` | Firecrawl + Playwright CDP as Genblaze video step | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/record_provider.py#L17), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/record_provider.py#L34), [`Asset` L100](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/record_provider.py#L100) |
 | `AssembleProvider` | Narration + ffmpeg mux; sets Genblaze `StepType.MIX` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/assemble_provider.py#L17), [import `StepType`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/assemble_provider.py#L12), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/assemble_provider.py#L38), [`StepType.MIX` L149](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/assemble_provider.py#L149), [`Asset` L142](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/assemble_provider.py#L142) |
 
-**`genblaze_google`** — [`from genblaze_google import chat`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/plan_provider.py#L13); plan call [`chat(model, prompt=…)` L63](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/plan_provider.py#L63). (Narration uses the LMNT SDK directly inside `AssembleProvider`, not a Genblaze LMNT step wrapper.)
+**Gemini text via FounderBlaze retry wrapper** — [`chat_with_retry` import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/plan_provider.py#L13) (from [`gemini_retry.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/gemini_retry.py#L92)); plan call [`chat_with_retry(model, prompt=…)` L63](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/plan_provider.py#L63). (Narration uses the LMNT SDK directly inside `AssembleProvider`, not a Genblaze LMNT step wrapper.)
 
-**After run** — [`pick_final_video_asset` L120](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py#L120), [`finalize_run_provenance` L125](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py#L125), [`merge_provenance` L134](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py#L134). Temporal: [`make_on_step_complete`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/temporal_bridge.py#L9).
+**After run** — [`pick_final_video_asset` L120](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py#L120), [`finalize_run_provenance` L125](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py#L125), [`merge_provenance` L134](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/apd/pipeline.py#L134). Temporal: [`make_on_step_complete`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/temporal_bridge.py#L14).
 
 ### Backblaze usage
 
@@ -1407,16 +1425,16 @@ Social Listening is a **five-step Genblaze DAG**: product profile → thread dis
 
 **`genblaze_google`:**
 
-- Text: [`from genblaze_google import chat`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/gemini_chat.py#L9), [`chat(...)` L27](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/gemini_chat.py#L27).
+- Text: [`chat_with_retry` import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/gemini_chat.py#L9) (from [`gemini_retry.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/gemini_retry.py#L92)), [`chat_with_retry(...)` L27](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/gemini_chat.py#L27).
 - Images: [`from genblaze_google import GeminiImageProvider`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/insights_provider.py#L13), plus Genblaze [`Step`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/insights_provider.py#L12); construct [`GeminiImageProvider(...)` L79](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/insights_provider.py#L79); step modality [`Modality.IMAGE` L110](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/insights_provider.py#L110).
 
 **`Asset` helpers** — [`_assets.py` import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/_assets.py#L9), [L26](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/_assets.py#L26), [L42](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/_assets.py#L42).
 
-**After run** — [`pick_final_pdf_asset` L124](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L124), [`finalize_run_provenance` L129](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L129), [`finalize_chart_provenance` L139](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L139), [`merge_provenance` L146](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L146).
+**After run** — [`pick_final_pdf_asset` L123](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L123), [`finalize_run_provenance` L128](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L128), [`merge_provenance` L139](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/social_listening/pipeline.py#L139).
 
 ### Backblaze usage
 
-**Code:** [`pick_final_pdf_asset`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L148) → [`finalize_run_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L69) (`mode="sidecar"`) → [`finalize_chart_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L209) → [`merge_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L289). Thread URLs are extra non-B2 metadata artifacts on the job.
+**Code:** [`pick_final_pdf_asset`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L148) → [`finalize_run_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L69) (`mode="sidecar"`) → [`merge_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L289). Charts are embedded in the PDF; Thread URLs are extra non-B2 metadata artifacts on the job.
 
 Prefix: `founderblaze/social-listening/…` for the PDF and chart objects. Sidecar: `{object_key}.genblaze.json` beside the report.
 
@@ -2033,16 +2051,16 @@ Run: [`.run(sink=…)` L150](https://github.com/Marshal-AM/founderblaze/blob/mai
 
 **`genblaze_google`:**
 
-- Text: [`chat` import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/gemini_chat.py#L9), [`chat(...)` L27](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/gemini_chat.py#L27).
+- Text: [`chat_with_retry` import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/gemini_chat.py#L9) (from [`gemini_retry.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/gemini_retry.py#L92)), [`chat_with_retry(...)` L27](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/gemini_chat.py#L27).
 - Images: [`GeminiImageProvider` import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/insights_provider.py#L13), Genblaze [`Step`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/insights_provider.py#L12), construct [L88](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/insights_provider.py#L88), modality [L104](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/insights_provider.py#L104).
 
 **`Asset` helpers** — [import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/_assets.py#L9), [L26](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/_assets.py#L26), [L42](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/_assets.py#L42).
 
-**After run** — [`pick_final_pdf_asset` L158](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L158), [`finalize_run_provenance` L163](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L163), [`finalize_chart_provenance` L173](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L173), [`merge_provenance` L177](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L177).
+**After run** — [`pick_final_pdf_asset` L157](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L157), [`finalize_run_provenance` L162](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L162), [`merge_provenance` L171](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/outreach/pipeline.py#L171).
 
 ### Backblaze usage
 
-**Code:** [`pick_final_pdf_asset`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L148) → [`finalize_run_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L69) (`mode="sidecar"`) → [`finalize_chart_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L209) → [`merge_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L289).
+**Code:** [`pick_final_pdf_asset`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L148) → [`finalize_run_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L69) (`mode="sidecar"`) → [`merge_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L289). Charts are embedded in the PDF; only the PDF (+ sidecar) is uploaded to B2.
 
 Prefix: `founderblaze/outreach/…`. Completed jobs expose B2 URLs in `artifacts[]`; the API re-signs them on poll via [`resolve_download_url`](https://github.com/Marshal-AM/founderblaze/blob/main/apps/api/src/founderblaze_api/main.py#L80).
 
@@ -2740,16 +2758,16 @@ Run: [`.run(sink=…)` L132](https://github.com/Marshal-AM/founderblaze/blob/mai
 
 **`genblaze_google`:**
 
-- Text: [`chat` import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/gemini_chat.py#L9), [`chat(...)` L27](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/gemini_chat.py#L27).
+- Text: [`chat_with_retry` import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/gemini_chat.py#L9) (from [`gemini_retry.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/gemini_retry.py#L92)), [`chat_with_retry(...)` L27](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/gemini_chat.py#L27).
 - Images: [`GeminiImageProvider`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/insights_provider.py#L14), Genblaze [`Step`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/insights_provider.py#L13), construct [L96](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/insights_provider.py#L96), modality [L128](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/insights_provider.py#L128).
 
 **`Asset` helpers** — [import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/_assets.py#L9), [L26](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/_assets.py#L26), [L42](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/_assets.py#L42).
 
-**After run** — [`pick_final_pdf_asset` L140](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L140), [`finalize_run_provenance` L147](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L147), [`finalize_chart_provenance` L155](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L155), [`merge_provenance` L163](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L163).
+**After run** — [`pick_final_pdf_asset` L138](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L138), [`finalize_run_provenance` L145](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L145), [`merge_provenance` L158](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/competitor_research/pipeline.py#L158).
 
 ### Backblaze usage
 
-**Code:** requires a resolved `object_key` after `.run(sink=…)` → [`finalize_run_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L69) (`mode="sidecar"`) → [`finalize_chart_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L209) → [`merge_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L289). Workdir is `shutil.rmtree`’d in `finally` so local temp files are not the system of record.
+**Code:** requires a resolved `object_key` after `.run(sink=…)` → [`finalize_run_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L69) (`mode="sidecar"`) → [`merge_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L289). Charts are embedded in the PDF; only the PDF (+ sidecar) is uploaded to B2. Workdir is `shutil.rmtree`’d in `finally` so local temp files are not the system of record.
 
 Prefix: `founderblaze/competitor-research/…` for the PDF and attack-visual chart PNGs.
 
@@ -3379,7 +3397,7 @@ No design agency. No Fiverr roulette. No $2,000 brand workshop. **One API call. 
 
 ### Genblaze usage
 
-Brand Kit is an **eight-step Genblaze DAG** mixing Gemini text (`genblaze_google.chat`), Gemini image (`GeminiImageProvider`), and local palette/fonts/icon/banner/zip providers — all as `SyncProvider`s with fan-in via `input_from`. Entry: [`run_brand_kit_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L33).
+Brand Kit is an **eight-step Genblaze DAG** mixing Gemini text (via FounderBlaze `chat_with_retry`), Gemini image (`GeminiImageProvider` + retry policy), and local palette/fonts/icon/banner/zip providers — all as `SyncProvider`s with fan-in via `input_from`. Entry: [`run_brand_kit_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L33).
 
 **Pipeline graph** — [`from genblaze_core import Modality, Pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L8); sink [`build_b2_sink(service="brand-kit")` L61](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L61); [`Pipeline("brand-kit")` L67](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/pipeline.py#L67):
 
@@ -3400,7 +3418,7 @@ Run: [`.run(sink=…)` L140](https://github.com/Marshal-AM/founderblaze/blob/mai
 
 | Provider | Role | Links |
 |----------|------|-------|
-| `AnalyzeProvider` | Brief → concepts via `genblaze_google.chat` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/analyze_provider.py#L25), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/analyze_provider.py#L44), [`chat` import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/analyze_provider.py#L12), [`chat(...)` L83](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/analyze_provider.py#L83) |
+| `AnalyzeProvider` | Brief → concepts via `chat_with_retry` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/analyze_provider.py#L24), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/analyze_provider.py#L43), [`chat_with_retry` import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/analyze_provider.py#L19), [`chat_with_retry(...)` L82](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/analyze_provider.py#L82) |
 | `LogoConceptsProvider` | Logos via `GeminiImageProvider` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/logo_provider.py#L18), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/logo_provider.py#L37), [`GeminiImageProvider` import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/logo_provider.py#L11), construct [L56](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/logo_provider.py#L56), Genblaze [`Step` L68](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/logo_provider.py#L68), modality [L74](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/logo_provider.py#L74) |
 | `PaletteProvider` | Palette from logo pixels | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/palette_provider.py#L22), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/palette_provider.py#L32) |
 | `FontsProvider` | Google Fonts pairing/download | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/fonts_provider.py#L20), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/brand_kit/fonts_provider.py#L29) |
@@ -4010,27 +4028,27 @@ Brand Kit generates **3 logo concepts** by default. The `pick` parameter selects
 
 ## Service 7 — App Kit
 
-> **Product name + idea in. Desktop and mobile UI mock ZIP out.**
+> **Product name + idea in. Two multi-screen UI kit boards (mobile + desktop) in a ZIP out.**
 
-You have a brand. You have a pitch. What you still need is something that *looks like the product* — real screens, real navigation, desktop and phone layouts — before you hire a designer or open Figma for three weeks.
+You have a brand. You have a pitch. What you still need is something that *looks like the product* — real screens, real navigation, phone and desktop layouts — before you hire a designer or open Figma for three weeks.
 
-App Kit is FounderBlaze's **UI generation engine**. Send a product name and a short product idea. Gemini plans a complete mini information architecture (typically 6–10 screens). Optionally pass a downloadable **brand-kit ZIP URL** so every screen is conditioned on your real logos and palette; otherwise App Kit invents a cohesive visual system from the brief. Gemini's image model then generates a high-fidelity **desktop** and **mobile** designs for each planned screen. Everything is zipped (`desktop/`, `mobile/`, `manifest.json`) and uploaded to Backblaze B2.
+App Kit is FounderBlaze's **UI generation engine**. Send a product name and a short product idea. Gemini plans a mini information architecture (**4–6 screens**, typically 6). Optionally pass a downloadable **brand-kit ZIP URL** so boards are conditioned on your real logos and palette; otherwise App Kit invents a cohesive visual system from the brief. Gemini's image model then generates **exactly two** landscape 16:9 UI kit boards — one phone board and one desktop board — each showing **all** planned screens in a labeled grid. Those two PNGs plus `manifest.json` are zipped and uploaded to Backblaze B2.
 
-No Figma retainer. No generic wireframe pack. **One API call. One ZIP. A full set of UI mocks.**
+No Figma retainer. No per-screen image farm. **One API call. Two boards. One ZIP.**
 
 **SLA:** ~5 minutes · **Output:** Backblaze-hosted app kit ZIP (`app_kit_zip`)
 
 ### Genblaze usage
 
-App Kit is a **four-step Genblaze DAG**: plan IA → resolve brand context → generate desktop/mobile UI mocks as an IMAGE step → zip. Entry: [`run_app_kit_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L29).
+App Kit is a **four-step Genblaze DAG**: plan IA → resolve brand context → generate two UI kit boards as an IMAGE step → zip. Entry: [`run_app_kit_pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L29).
 
 **Pipeline graph** — [`from genblaze_core import Modality, Pipeline`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L8); sink [`build_b2_sink(service="app-kit")` L58](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L58); [`Pipeline("app-kit")` L63](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L63):
 
 | # | Provider | Modality | `.step` / fan-in |
 |---|----------|----------|------------------|
-| 0 | `PlanScreensProvider` | [TEXT L77](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L77) | [L68](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L68) |
+| 0 | `PlanScreensProvider` | [TEXT L77](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L77) | [L68](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L68) — IA capped at `MAX_SCREENS=6` |
 | 1 | `BrandContextProvider` | [TEXT L88](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L88) | [L79](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L79) (`input_from=[0]`) — download+unzip optional brand-kit ZIP or invent brand |
-| 2 | `ScreensProvider` | [IMAGE L99](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L99) | [L91](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L91) (`input_from=[0,1]`) — desktop + mobile mocks per screen |
+| 2 | `ScreensProvider` | [IMAGE L99](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L99) | [L91](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L91) (`input_from=[0,1]`) — **exactly two** 16:9 boards (mobile + desktop) |
 | 3 | `ZipProvider` | [TEXT L109](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L109) | [L102](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L102) (`input_from=[0,1,2]`) |
 
 Run / Genblaze→B2 handoff: [`.run(sink=…)` L112](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py#L112).
@@ -4039,10 +4057,10 @@ Run / Genblaze→B2 handoff: [`.run(sink=…)` L112](https://github.com/Marshal-
 
 | Provider | Role | Links |
 |----------|------|-------|
-| `PlanScreensProvider` | Mini IA / screen list via `genblaze_google.chat` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/plan_provider.py#L19), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/plan_provider.py#L38), [`chat` import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/plan_provider.py#L12), [`chat(...)` L83](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/plan_provider.py#L83) |
-| `BrandContextProvider` | Brand ZIP extract or invent direction via `chat` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/brand_context_provider.py#L24), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/brand_context_provider.py#L45), [`chat` import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/brand_context_provider.py#L14), [`chat(...)` L226](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/brand_context_provider.py#L226) |
-| `ScreensProvider` | Genblaze IMAGE step; loops Gemini image gen per screen | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/screens_provider.py#L22), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/screens_provider.py#L41), [`generate` L48](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/screens_provider.py#L48) |
-| `ZipProvider` | Pack `desktop/` + `mobile/` + manifest | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/zip_provider.py#L22), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/zip_provider.py#L39) |
+| `PlanScreensProvider` | Mini IA / screen list via `chat_with_retry` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/plan_provider.py#L21), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/plan_provider.py#L40), [`chat_with_retry` import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/plan_provider.py#L13), [`chat_with_retry(...)` L87](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/plan_provider.py#L87), [`MAX_SCREENS`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/plan_provider.py#L17) |
+| `BrandContextProvider` | Brand ZIP extract or invent direction via `chat_with_retry` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/brand_context_provider.py#L24), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/brand_context_provider.py#L45), [`chat_with_retry` import](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/brand_context_provider.py#L17), [`chat_with_retry(...)` L226](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/brand_context_provider.py#L226) |
+| `ScreensProvider` | Two 16:9 UI kit boards via `generate_content_with_retry` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/screens_provider.py#L38), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/screens_provider.py#L57), [`_BOARD_VARIANTS`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/screens_provider.py#L24) / [`BOARD_ASPECT_RATIO`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/screens_provider.py#L22), [`generate` L64](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/screens_provider.py#L64) |
+| `ZipProvider` | Pack `mobile/ui-kit-board.png` + `desktop/ui-kit-board.png` + manifest | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/zip_provider.py#L22), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/zip_provider.py#L39) |
 
 **`Asset` helpers** — [`from genblaze_core import Asset`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/_assets.py#L14), [`Asset(...)` L67](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/_assets.py#L67).
 
@@ -4052,13 +4070,13 @@ Run / Genblaze→B2 handoff: [`.run(sink=…)` L112](https://github.com/Marshal-
 
 **Code:** `pick_final_zip_asset` in [`app_kit/pipeline.py`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/app_kit/pipeline.py) → [`resolve_download_url`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/b2.py#L56) → [`finalize_run_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L69) (`mode="sidecar"`) → [`merge_provenance`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/storage/provenance.py#L289). Artifact type: `app_kit_zip`.
 
-Prefix: `founderblaze/app-kit/…` (`desktop/`, `mobile/`, `manifest.json` inside the ZIP). Optional `brand_kit_url` is fetched over HTTP inside `BrandContextProvider` for styling only — it is **not** re-uploaded as the primary deliverable; the App Kit ZIP on B2 is.
+Prefix: `founderblaze/app-kit/…` (`mobile/ui-kit-board.png`, `desktop/ui-kit-board.png`, `manifest.json` inside the ZIP). Optional `brand_kit_url` is fetched over HTTP inside `BrandContextProvider` for styling only — it is **not** re-uploaded as the primary deliverable; the App Kit ZIP on B2 is.
 
 ---
 
 ### The Pitch
 
-Imagine handing a designer a pack of production-quality UI screens — splash, auth, home, detail, settings, empty states — in both desktop and mobile layouts, under five minutes after describing the product in two sentences. Optionally style every screen from the Brand Kit ZIP you already generated.
+Imagine handing a designer two production-quality UI kit boards — every planned screen laid out for phone and for desktop — under five minutes after describing the product in two sentences. Optionally style both boards from the Brand Kit ZIP you already generated.
 
 That is App Kit.
 
@@ -4082,7 +4100,7 @@ Or, after Brand Kit completes, pass the ZIP URL:
 }
 ```
 
-The pipeline plans the IA, resolves brand context (download + unzip brand kit, or invent palette/typography/voice), generates `{screen}-desktop.png` and `{screen}-mobile.png` for each screen, and packs the ZIP.
+The pipeline plans the IA (4–6 screens), resolves brand context (download + unzip brand kit, or invent palette/typography/voice), generates `mobile/ui-kit-board.png` and `desktop/ui-kit-board.png`, and packs the ZIP.
 
 **This is the UI surface a solo founder needs before writing a line of frontend.**
 
@@ -4100,7 +4118,7 @@ flowchart LR
 
     subgraph Phase1["Phase 1 — plan"]
         Plan["PlanScreensProvider"]
-        Screens["Ordered screen list + nav"]
+        Screens["4to6 screens + nav"]
     end
 
     subgraph Phase2["Phase 2 — brand"]
@@ -4108,10 +4126,10 @@ flowchart LR
         Refs["Palette + logo refs"]
     end
 
-    subgraph Phase3["Phase 3 — screens"]
+    subgraph Phase3["Phase 3 — boards"]
         Img["ScreensProvider / Gemini IMAGE"]
-        Desk["desktop/*.png"]
-        Mob["mobile/*.png"]
+        Mob["mobile/ui-kit-board.png"]
+        Desk["desktop/ui-kit-board.png"]
     end
 
     subgraph Phase4["Phase 4 — zip + upload"]
@@ -4126,8 +4144,8 @@ flowchart LR
     BKURL --> Brand
     Brand --> Refs --> Img
     Screens --> Img
-    Img --> Desk --> Zip
     Img --> Mob --> Zip
+    Img --> Desk --> Zip
     Zip --> B2Up --> ZIPURL
 ```
 
@@ -4246,7 +4264,7 @@ Run / Genblaze→B2 handoff: [`.run(sink=…)` L124](https://github.com/Marshal-
 |----------|------|-------|
 | `ProductResearchProvider` | Grounded product brief via `gemini_grounded_json` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/pitch_deck/research_provider.py#L16), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/pitch_deck/research_provider.py#L35), [`gemini_grounded_json` L48](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/pitch_deck/research_provider.py#L48) |
 | `DesignLanguageProvider` | Design tokens matched to product URL | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/pitch_deck/design_provider.py#L17), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/pitch_deck/design_provider.py#L34), [`gemini_grounded_json` L62](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/pitch_deck/design_provider.py#L62) |
-| `PlanDeckProvider` | 6–8 slide IA via `genblaze_google.chat` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/pitch_deck/plan_provider.py#L25), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/pitch_deck/plan_provider.py#L44), [`chat(...)` L128](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/pitch_deck/plan_provider.py#L128), [`assert_slide_count` L132](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/pitch_deck/plan_provider.py#L132) |
+| `PlanDeckProvider` | 6–8 slide IA via `chat_with_retry` | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/pitch_deck/plan_provider.py#L24), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/pitch_deck/plan_provider.py#L43), [`chat_with_retry(...)` L127](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/pitch_deck/plan_provider.py#L127), [`assert_slide_count` L131](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/pitch_deck/plan_provider.py#L131) |
 | `SlidesProvider` | Genblaze IMAGE step; Gemini image gen per slide | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/pitch_deck/slides_provider.py#L22), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/pitch_deck/slides_provider.py#L41), [`generate` L48](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/pitch_deck/slides_provider.py#L48) |
 | `PdfCompileProvider` | Ordered PNGs → Pillow multipage PDF | [class](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/pitch_deck/pdf_provider.py#L22), [capabilities](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/pitch_deck/pdf_provider.py#L37), [`generate` L44](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/pitch_deck/pdf_provider.py#L44) |
 
@@ -4542,6 +4560,67 @@ Per-service request examples and artifact shapes are documented in each service 
 
 ---
 
+## Feedback
+
+FounderBlaze wraps Genblaze Gemini calls with [`chat_with_retry` / `generate_content_with_retry`](https://github.com/Marshal-AM/founderblaze/blob/main/packages/founderblaze/src/founderblaze/core/gemini_retry.py) because Genblaze’s opt-in chat retry path currently only covers **429**, not **503**. Upstream ask:
+
+**[RetryPolicy includes SERVER_ERROR (503), but chat(retry_on_rate_limit=True) still fails immediately](https://github.com/backblaze-labs/genblaze/issues/264)** ([backblaze-labs/genblaze#264](https://github.com/backblaze-labs/genblaze/issues/264))
+
+### Problem
+
+We hit Gemini **503 UNAVAILABLE / high demand** failures and looked for Genblaze’s built-in retry support.
+
+What we found:
+- `RetryPolicy` default `retryable_codes` already includes `SERVER_ERROR` (and `TIMEOUT`, `RATE_LIMIT`).
+- `BaseProvider`’s poll/fetch retry path uses `policy.should_retry(...)`, so **503 is retryable there**.
+
+What we actually call in app code is mostly `genblaze_google.chat(..., retry_on_rate_limit=True)` (and similar standalone Google calls). That path uses `call_with_rate_limit_retry`, which **hard-gates on `ProviderErrorCode.RATE_LIMIT` only**:
+
+```python
+if exc.error_code != ProviderErrorCode.RATE_LIMIT or not policy.should_retry(...):
+    raise
+```
+
+So even when we opt into retry (and even when we pass a `RetryPolicy` whose defaults say `SERVER_ERROR` is retryable), a Gemini **503 still fails on the first attempt**. The policy advertises 503 retry support, but the chat convenience helper does not honor it.
+
+**Use case:** long-running FounderBlaze / Genblaze pipelines that need the *individual* failed Gemini chat/image call retried in place on transient 503s — without wrapping Genblaze ourselves or restarting the whole pipeline.
+
+### Proposed solution
+
+Make the standalone chat retry path consistent with `RetryPolicy` / `BaseProvider`:
+
+1. Change `call_with_rate_limit_retry` to defer fully to `policy.should_retry(exc.error_code, attempt)` (drop the hard `!= RATE_LIMIT` gate), **or**
+2. Add `call_with_transient_retry` that does that, and wire `chat` / `achat` to it.
+
+Keep non-retryable codes (`AUTH_FAILURE`, `INVALID_INPUT`, `CONTENT_POLICY`, `MODEL_ERROR`) failing fast. Continue using `RetryPolicy.compute_delay` / `Retry-After`.
+
+Sketch:
+
+```python
+def call_with_transient_retry(fn, *, policy=None):
+    policy = policy or RetryPolicy()
+    attempt = 1
+    while True:
+        try:
+            return fn()
+        except ProviderError as exc:
+            if not policy.should_retry(exc.error_code, attempt):
+                exc.attempts = attempt
+                raise
+            time.sleep(policy.compute_delay(attempt, retry_after=exc.retry_after))
+            attempt += 1
+```
+
+Docs should state that the opt-in retries **transient** codes from the policy (including 503), not only 429 — or add an explicit `retry_transient=` flag.
+
+### Alternatives considered
+
+1. **Rely on existing `RetryPolicy` / `BaseProvider` retries as-is** — does not cover `chat(retry_on_rate_limit=True)`, which is the API we use for Gemini text. Image `generate_content` also isn’t wrapped by that helper.
+2. **Caller-side wrappers in every consumer app** — what we’re doing today in FounderBlaze; works, but duplicates Genblaze’s own retry policy logic and shouldn’t be required once `RetryPolicy` already lists `SERVER_ERROR`.
+3. **Document “429 only” and leave unchanged** — accurate to current code, but leaves a confusing gap: policy says 503 is retryable, chat opt-in still doesn’t retry it.
+
+---
+
 ## Conclusion
 
 We are watching the birth of a new kind of company.
@@ -4564,7 +4643,7 @@ Eight services. One entrypoint agent. Genblaze pipelines. Backblaze deliverables
 | Investor outreach | Outreach — intelligence report from site + revenue sheet |
 | Competitive positioning | Competitor Research — feature matrix, pricing, SWOT, PDF |
 | A visual identity | Brand Kit — logos, colors, fonts, banners, ZIP |
-| UI mockups for the product | App Kit — desktop + mobile screen mocks, ZIP |
+| UI mockups for the product | App Kit — two multi-screen UI kit boards (mobile + desktop), ZIP |
 | An investor pitch deck | Pitch Deck — 6–8 page on-brand PDF from URL + funding ask |
 
 Every service is **agent-native** — discoverable via MCP and the agent API, executed as A2MCP jobs, and delivered as B2 artifacts. Human founders chat with the entrypoint agent. External tools call the same catalog through MCP. No agency retainers. No six-week creative cycle.
