@@ -26,8 +26,9 @@ This is not a template library. **This is an ENTIRE collection of non-engineerin
 14. [Service 7 — App Kit](#service-7--app-kit)
 15. [Service 8 — Pitch Deck](#service-8--pitch-deck)
 16. [Universal API Reference](#universal-api-reference)
-17. [Feedback](#feedback)
-18. [Conclusion](#conclusion)
+17. [Setup](#setup)
+18. [Feedback](#feedback)
+19. [Conclusion](#conclusion)
 
 ---
 
@@ -4557,6 +4558,75 @@ curl http://localhost:4021/v1/discovery
 | `404` | `not_found` | Unknown `job_id` |
 
 Per-service request examples and artifact shapes are documented in each service section above.
+
+---
+
+## Setup
+
+Run the full stack locally: A2MCP API (`:4021`), Temporal worker, agent (`:4022`), optional chat UI (`:3001`).
+
+### Prerequisites
+
+- Python **3.11+**, [uv](https://docs.astral.sh/uv/), Docker
+- Node **20+** (chat UI only)
+- API keys in `.env` — at minimum `GEMINI_API_KEY` + Backblaze `B2_*` for uploaded artifacts; add service-specific keys as needed (`FIRECRAWL_API_KEY`, `LMNT_API_KEY`, `SEGMIND_API_KEY`, `EXA_SEARCH_API_KEY`, `TAVILY_API_KEY`, `SERPER_API_KEY`, …)
+
+### 1. Env + deps
+
+```bash
+cp env.example .env
+# Fill GEMINI_API_KEY, B2_KEY_ID, B2_APP_KEY, B2_BUCKET, B2_REGION, and any service keys you will exercise.
+
+uv sync --all-packages
+# APD browser recording only:
+uv run --package founderblaze playwright install chromium
+```
+
+### 2. Infra (Postgres + Temporal)
+
+```bash
+docker compose -f infra/docker/docker-compose.smoke.yml up -d
+```
+
+Matches `env.example`: Postgres on **5433** (`founderforge` / `founderforge`), Temporal on **7233**, UI on **8080**.
+
+### 3. Start processes (three terminals)
+
+```bash
+uv run --package founderblaze-api founderblaze-api
+uv run --package founderblaze-worker founderblaze-worker
+uv run --package founderblaze-agent founderblaze-agent
+```
+
+Optional chat UI:
+
+```bash
+cp apps/chat/.env.example apps/chat/.env.local
+# NEXT_PUBLIC_AGENT_URL=http://localhost:4022
+cd apps/chat && npm install && npm run dev
+```
+
+### 4. Smoke test
+
+```bash
+curl -s http://localhost:4021/v1/discovery | head
+curl -s -X POST http://localhost:4021/v1/services/competitor-research/jobs \
+  -H "Content-Type: application/json" \
+  -H "X-Idempotency-Key: setup-$(date +%s)" \
+  -d '{"input":{"product_url":"https://example.com"}}'
+# Poll: curl -s http://localhost:4021/v1/jobs/{job_id}
+```
+
+Or run a pipeline without the API/worker (still needs Gemini; skip B2 with `--no-b2`):
+
+```bash
+uv run --package founderblaze founderblaze-app-kit-live \
+  --product-name "Solace" \
+  --product-idea "A calm meditation app with guided sessions." \
+  --no-b2
+```
+
+Ports: **4021** API · **4022** agent · **3001** chat · **7233** Temporal · **8080** Temporal UI.
 
 ---
 
