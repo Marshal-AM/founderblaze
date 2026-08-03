@@ -123,7 +123,11 @@ def _collect_chart_images(
         if kind not in CHART_KINDS:
             continue
         chart_id = str(meta.get("chart_id") or "")
-        data_uri = meta.get("data_uri")
+        data_uri = _resolve_chart_data_uri(
+            data_uri=meta.get("data_uri"),
+            path=meta.get("local_path"),
+            asset=asset,
+        )
         if not chart_id or not data_uri:
             continue
         by_id[chart_id] = {
@@ -138,18 +142,60 @@ def _collect_chart_images(
         if not c.get("ok"):
             continue
         chart_id = str(c.get("id") or "")
-        if chart_id in by_id or not c.get("data_uri"):
+        if chart_id in by_id:
+            continue
+        data_uri = _resolve_chart_data_uri(
+            data_uri=c.get("data_uri"),
+            path=c.get("path"),
+        )
+        if not chart_id or not data_uri:
             continue
         by_id[chart_id] = {
             "id": chart_id,
             "kind": c.get("kind"),
             "title": c.get("title") or titles.get(chart_id, chart_id),
             "caption": c.get("caption") or "",
-            "data_uri": c.get("data_uri"),
+            "data_uri": data_uri,
         }
 
     order = [cid for cid, _, _ in CHART_SPECS]
     return [by_id[k] for k in order if k in by_id]
+
+
+def _resolve_chart_data_uri(
+    *,
+    data_uri: Any = None,
+    path: Any = None,
+    asset: Any = None,
+) -> str | None:
+    import base64
+
+    from founderblaze.outreach._assets import local_path
+
+    if isinstance(data_uri, str) and data_uri.startswith("data:"):
+        return data_uri
+    candidates: list[Path] = []
+    if path:
+        candidates.append(Path(str(path)))
+    if asset is not None:
+        raw_url = getattr(asset, "url", None)
+        url_s = str(getattr(raw_url, "url", None) or raw_url or "")
+        lp = local_path(url_s)
+        if lp is not None:
+            candidates.append(lp)
+    for candidate in candidates:
+        if not candidate.is_file():
+            continue
+        raw = candidate.read_bytes()
+        b64 = base64.b64encode(raw).decode("ascii")
+        mime = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".webp": "image/webp",
+        }.get(candidate.suffix.lower(), "image/png")
+        return f"data:{mime};base64,{b64}"
+    return None
 
 
 def _html_to_pdf(html: str, out: Path) -> None:

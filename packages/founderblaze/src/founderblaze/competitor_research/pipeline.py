@@ -24,7 +24,6 @@ from founderblaze.core.storage.b2 import (
     resolve_download_url,
 )
 from founderblaze.core.storage.provenance import (
-    finalize_chart_provenance,
     finalize_run_provenance,
     merge_provenance,
     pick_primary_local_path,
@@ -70,7 +69,6 @@ def run_competitor_research_pipeline(
     url: str | None = None
     object_key: str | None = None
     prov: dict[str, Any] = {}
-    chart_artifacts: list[dict[str, Any]] = []
 
     try:
         result = (
@@ -142,7 +140,7 @@ def run_competitor_research_pipeline(
             raise RuntimeError("B2 upload did not produce an object_key for the PDF")
         url = resolve_download_url(object_key, settings=settings)
 
-        # Provenance must run before work_dir cleanup (PDF + chart files).
+        # Provenance must run before work_dir cleanup (charts stay local; only PDF on B2).
         local_pdf = pick_primary_local_path(result, kind="pdf")
         prov = finalize_run_provenance(
             result,
@@ -151,9 +149,6 @@ def run_competitor_research_pipeline(
             object_key=object_key,
             settings=settings,
             mode="sidecar",
-        )
-        chart_artifacts = finalize_chart_provenance(
-            result, sink=sink, settings=settings, upload=True
         )
     finally:
         # Scratch PDF/JSON are ephemeral — deliverable lives only on B2.
@@ -173,7 +168,7 @@ def run_competitor_research_pipeline(
         "job_id": job_id,
         "product_name": product_name,
         "product_url": product_url,
-        "artifacts": [primary, *chart_artifacts],
+        "artifacts": [primary],
         "pdf_url": url,
         "object_key": object_key,
         "manifest_hash": prov.get("canonical_hash"),

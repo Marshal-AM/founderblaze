@@ -14,7 +14,6 @@ from founderblaze.core.storage.b2 import (
     resolve_download_url,
 )
 from founderblaze.core.storage.provenance import (
-    finalize_chart_provenance,
     finalize_run_provenance,
     merge_provenance,
     pick_primary_local_path,
@@ -135,12 +134,6 @@ def run_social_listening_pipeline(
         mode="sidecar",
         upload_sidecar=upload_to_b2,
     )
-    chart_artifacts = (
-        finalize_chart_provenance(result, sink=sink, settings=settings, upload=True)
-        if upload_to_b2 and sink is not None
-        else []
-    )
-
     thread_urls = _thread_urls_from_result(result)
     artifacts: list[dict[str, Any]] = [
         merge_provenance(
@@ -152,7 +145,6 @@ def run_social_listening_pipeline(
             },
             prov,
         ),
-        *chart_artifacts,
     ]
     for turl in thread_urls:
         artifacts.append(

@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from temporalio import activity
@@ -12,7 +13,11 @@ from founderblaze.brand_kit import run_brand_kit_pipeline
 from founderblaze.core.config import get_settings
 from founderblaze.core.jobs.store import get_job_store
 from founderblaze.core.schemas.models import Artifact, JobStatus
-from founderblaze.core.temporal_bridge import make_on_step_complete
+from founderblaze.core.temporal_bridge import (
+    heartbeat_keepalive,
+    make_on_step_complete,
+    make_threadsafe_heartbeat,
+)
 from founderblaze.outreach import run_outreach_pipeline
 from founderblaze.competitor_research import run_competitor_research_pipeline
 from founderblaze.pitch_deck import run_pitch_deck_pipeline
@@ -20,6 +25,58 @@ from founderblaze.promo_video import run_promo_video_pipeline
 from founderblaze.social_listening import run_social_listening_pipeline
 
 log = logging.getLogger("founderblaze.worker")
+
+
+def _step_callbacks(
+    job_id: str, store: Any
+) -> tuple[Callable[[Any], None], Callable[[str], None]]:
+    """Job step updates + Temporal heartbeats safe to call from to_thread workers."""
+    loop = asyncio.get_running_loop()
+    heartbeat = make_threadsafe_heartbeat(activity.heartbeat, loop=loop)
+
+    def set_step(name: str) -> None:
+        fut = asyncio.run_coroutine_threadsafe(store.set_step(job_id, name), loop)
+        try:
+            fut.result(timeout=15)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("set_step failed: %s", exc)
+
+    return make_on_step_complete(set_step=set_step, heartbeat=heartbeat), heartbeat
+
+
+async def _run_pipeline_thread(
+    fn: Callable[..., dict[str, Any]],
+    *,
+    job_id: str,
+    store: Any,
+    label: str,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    on_step, heartbeat = _step_callbacks(job_id, store)
+    try:
+        with heartbeat_keepalive(heartbeat, interval=30.0):
+            return await asyncio.to_thread(
+                fn,
+                job_id=job_id,
+                on_step_complete=on_step,
+                **kwargs,
+            )
+    except Exception as exc:  # noqa: BLE001
+        log.exception("%s pipeline failed job_id=%s", label, job_id)
+        await store.set_status(job_id, JobStatus.FAILED, error=str(exc)[:2000])
+        raise
+
+
+async def _complete_job(job_id: str, store: Any, result: dict[str, Any]) -> dict[str, Any]:
+    artifacts = [Artifact.model_validate(a) for a in result.get("artifacts") or []]
+    await store.update(
+        job_id,
+        status=JobStatus.COMPLETED,
+        artifacts=artifacts,
+        error=None,
+        step="completed",
+    )
+    return result
 
 
 @activity.defn(name="run_apd_activity")
@@ -41,43 +98,16 @@ async def run_apd_activity(job_id: str) -> dict[str, Any]:
         )
         raise RuntimeError("invalid APD input")
 
-    loop = asyncio.get_running_loop()
-
-    def set_step(name: str) -> None:
-        fut = asyncio.run_coroutine_threadsafe(store.set_step(job_id, name), loop)
-        try:
-            fut.result(timeout=15)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("set_step failed: %s", exc)
-
-    on_step = make_on_step_complete(
-        set_step=set_step,
-        heartbeat=lambda label: activity.heartbeat(label),
+    result = await _run_pipeline_thread(
+        run_apd_pipeline,
+        job_id=job_id,
+        store=store,
+        label="apd",
+        website_url=website_url,
+        script=script,
+        settings=settings,
     )
-
-    try:
-        result = await asyncio.to_thread(
-            run_apd_pipeline,
-            job_id=job_id,
-            website_url=website_url,
-            script=script,
-            on_step_complete=on_step,
-            settings=settings,
-        )
-    except Exception as exc:  # noqa: BLE001
-        log.exception("apd pipeline failed job_id=%s", job_id)
-        await store.set_status(job_id, JobStatus.FAILED, error=str(exc)[:2000])
-        raise
-
-    artifacts = [Artifact.model_validate(a) for a in result.get("artifacts") or []]
-    await store.update(
-        job_id,
-        status=JobStatus.COMPLETED,
-        artifacts=artifacts,
-        error=None,
-        step="completed",
-    )
-    return result
+    return await _complete_job(job_id, store, result)
 
 
 @activity.defn(name="run_brand_kit_activity")
@@ -103,44 +133,17 @@ async def run_brand_kit_activity(job_id: str) -> dict[str, Any]:
         )
         raise RuntimeError("invalid brand-kit input")
 
-    loop = asyncio.get_running_loop()
-
-    def set_step(name: str) -> None:
-        fut = asyncio.run_coroutine_threadsafe(store.set_step(job_id, name), loop)
-        try:
-            fut.result(timeout=15)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("set_step failed: %s", exc)
-
-    on_step = make_on_step_complete(
-        set_step=set_step,
-        heartbeat=lambda label: activity.heartbeat(label),
+    result = await _run_pipeline_thread(
+        run_brand_kit_pipeline,
+        job_id=job_id,
+        store=store,
+        label="brand-kit",
+        brand_name=brand_name,
+        description=description,
+        pick=pick,
+        settings=settings,
     )
-
-    try:
-        result = await asyncio.to_thread(
-            run_brand_kit_pipeline,
-            job_id=job_id,
-            brand_name=brand_name,
-            description=description,
-            pick=pick,
-            on_step_complete=on_step,
-            settings=settings,
-        )
-    except Exception as exc:  # noqa: BLE001
-        log.exception("brand-kit pipeline failed job_id=%s", job_id)
-        await store.set_status(job_id, JobStatus.FAILED, error=str(exc)[:2000])
-        raise
-
-    artifacts = [Artifact.model_validate(a) for a in result.get("artifacts") or []]
-    await store.update(
-        job_id,
-        status=JobStatus.COMPLETED,
-        artifacts=artifacts,
-        error=None,
-        step="completed",
-    )
-    return result
+    return await _complete_job(job_id, store, result)
 
 
 @activity.defn(name="run_app_kit_activity")
@@ -164,44 +167,17 @@ async def run_app_kit_activity(job_id: str) -> dict[str, Any]:
         )
         raise RuntimeError("invalid app-kit input")
 
-    loop = asyncio.get_running_loop()
-
-    def set_step(name: str) -> None:
-        fut = asyncio.run_coroutine_threadsafe(store.set_step(job_id, name), loop)
-        try:
-            fut.result(timeout=15)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("set_step failed: %s", exc)
-
-    on_step = make_on_step_complete(
-        set_step=set_step,
-        heartbeat=lambda label: activity.heartbeat(label),
+    result = await _run_pipeline_thread(
+        run_app_kit_pipeline,
+        job_id=job_id,
+        store=store,
+        label="app-kit",
+        product_name=product_name,
+        product_idea=product_idea,
+        brand_kit_url=brand_kit_url_s,
+        settings=settings,
     )
-
-    try:
-        result = await asyncio.to_thread(
-            run_app_kit_pipeline,
-            job_id=job_id,
-            product_name=product_name,
-            product_idea=product_idea,
-            brand_kit_url=brand_kit_url_s,
-            on_step_complete=on_step,
-            settings=settings,
-        )
-    except Exception as exc:  # noqa: BLE001
-        log.exception("app-kit pipeline failed job_id=%s", job_id)
-        await store.set_status(job_id, JobStatus.FAILED, error=str(exc)[:2000])
-        raise
-
-    artifacts = [Artifact.model_validate(a) for a in result.get("artifacts") or []]
-    await store.update(
-        job_id,
-        status=JobStatus.COMPLETED,
-        artifacts=artifacts,
-        error=None,
-        step="completed",
-    )
-    return result
+    return await _complete_job(job_id, store, result)
 
 
 @activity.defn(name="run_pitch_deck_activity")
@@ -223,43 +199,16 @@ async def run_pitch_deck_activity(job_id: str) -> dict[str, Any]:
         )
         raise RuntimeError("invalid pitch-deck input")
 
-    loop = asyncio.get_running_loop()
-
-    def set_step(name: str) -> None:
-        fut = asyncio.run_coroutine_threadsafe(store.set_step(job_id, name), loop)
-        try:
-            fut.result(timeout=15)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("set_step failed: %s", exc)
-
-    on_step = make_on_step_complete(
-        set_step=set_step,
-        heartbeat=lambda label: activity.heartbeat(label),
+    result = await _run_pipeline_thread(
+        run_pitch_deck_pipeline,
+        job_id=job_id,
+        store=store,
+        label="pitch-deck",
+        product_url=product_url,
+        funding_ask=funding_ask,
+        settings=settings,
     )
-
-    try:
-        result = await asyncio.to_thread(
-            run_pitch_deck_pipeline,
-            job_id=job_id,
-            product_url=product_url,
-            funding_ask=funding_ask,
-            on_step_complete=on_step,
-            settings=settings,
-        )
-    except Exception as exc:  # noqa: BLE001
-        log.exception("pitch-deck pipeline failed job_id=%s", job_id)
-        await store.set_status(job_id, JobStatus.FAILED, error=str(exc)[:2000])
-        raise
-
-    artifacts = [Artifact.model_validate(a) for a in result.get("artifacts") or []]
-    await store.update(
-        job_id,
-        status=JobStatus.COMPLETED,
-        artifacts=artifacts,
-        error=None,
-        step="completed",
-    )
-    return result
+    return await _complete_job(job_id, store, result)
 
 
 @activity.defn(name="run_outreach_activity")
@@ -281,43 +230,16 @@ async def run_outreach_activity(job_id: str) -> dict[str, Any]:
         )
         raise RuntimeError("invalid outreach input")
 
-    loop = asyncio.get_running_loop()
-
-    def set_step(name: str) -> None:
-        fut = asyncio.run_coroutine_threadsafe(store.set_step(job_id, name), loop)
-        try:
-            fut.result(timeout=15)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("set_step failed: %s", exc)
-
-    on_step = make_on_step_complete(
-        set_step=set_step,
-        heartbeat=lambda label: activity.heartbeat(label),
+    result = await _run_pipeline_thread(
+        run_outreach_pipeline,
+        job_id=job_id,
+        store=store,
+        label="outreach",
+        website_url=website_url,
+        sheet_url=sheet_url,
+        settings=settings,
     )
-
-    try:
-        result = await asyncio.to_thread(
-            run_outreach_pipeline,
-            job_id=job_id,
-            website_url=website_url,
-            sheet_url=sheet_url,
-            on_step_complete=on_step,
-            settings=settings,
-        )
-    except Exception as exc:  # noqa: BLE001
-        log.exception("outreach pipeline failed job_id=%s", job_id)
-        await store.set_status(job_id, JobStatus.FAILED, error=str(exc)[:2000])
-        raise
-
-    artifacts = [Artifact.model_validate(a) for a in result.get("artifacts") or []]
-    await store.update(
-        job_id,
-        status=JobStatus.COMPLETED,
-        artifacts=artifacts,
-        error=None,
-        step="completed",
-    )
-    return result
+    return await _complete_job(job_id, store, result)
 
 
 @activity.defn(name="run_social_listening_activity")
@@ -345,44 +267,17 @@ async def run_social_listening_activity(job_id: str) -> dict[str, Any]:
         )
         raise RuntimeError("invalid social-listening input")
 
-    loop = asyncio.get_running_loop()
-
-    def set_step(name: str) -> None:
-        fut = asyncio.run_coroutine_threadsafe(store.set_step(job_id, name), loop)
-        try:
-            fut.result(timeout=15)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("set_step failed: %s", exc)
-
-    on_step = make_on_step_complete(
-        set_step=set_step,
-        heartbeat=lambda label: activity.heartbeat(label),
+    result = await _run_pipeline_thread(
+        run_social_listening_pipeline,
+        job_id=job_id,
+        store=store,
+        label="social-listening",
+        product_url=product_url,
+        product_name=product_name,
+        max_posts=max_posts_i,
+        settings=settings,
     )
-
-    try:
-        result = await asyncio.to_thread(
-            run_social_listening_pipeline,
-            job_id=job_id,
-            product_url=product_url,
-            product_name=product_name,
-            max_posts=max_posts_i,
-            on_step_complete=on_step,
-            settings=settings,
-        )
-    except Exception as exc:  # noqa: BLE001
-        log.exception("social-listening pipeline failed job_id=%s", job_id)
-        await store.set_status(job_id, JobStatus.FAILED, error=str(exc)[:2000])
-        raise
-
-    artifacts = [Artifact.model_validate(a) for a in result.get("artifacts") or []]
-    await store.update(
-        job_id,
-        status=JobStatus.COMPLETED,
-        artifacts=artifacts,
-        error=None,
-        step="completed",
-    )
-    return result
+    return await _complete_job(job_id, store, result)
 
 
 @activity.defn(name="run_promo_video_activity")
@@ -409,44 +304,17 @@ async def run_promo_video_activity(job_id: str) -> dict[str, Any]:
         )
         raise RuntimeError("invalid promo-video input")
 
-    loop = asyncio.get_running_loop()
-
-    def set_step(name: str) -> None:
-        fut = asyncio.run_coroutine_threadsafe(store.set_step(job_id, name), loop)
-        try:
-            fut.result(timeout=15)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("set_step failed: %s", exc)
-
-    on_step = make_on_step_complete(
-        set_step=set_step,
-        heartbeat=lambda label: activity.heartbeat(label),
+    result = await _run_pipeline_thread(
+        run_promo_video_pipeline,
+        job_id=job_id,
+        store=store,
+        label="promo-video",
+        product_url=product_url,
+        duration=duration_i,
+        resolution=resolution,
+        settings=settings,
     )
-
-    try:
-        result = await asyncio.to_thread(
-            run_promo_video_pipeline,
-            job_id=job_id,
-            product_url=product_url,
-            duration=duration_i,
-            resolution=resolution,
-            on_step_complete=on_step,
-            settings=settings,
-        )
-    except Exception as exc:  # noqa: BLE001
-        log.exception("promo-video pipeline failed job_id=%s", job_id)
-        await store.set_status(job_id, JobStatus.FAILED, error=str(exc)[:2000])
-        raise
-
-    artifacts = [Artifact.model_validate(a) for a in result.get("artifacts") or []]
-    await store.update(
-        job_id,
-        status=JobStatus.COMPLETED,
-        artifacts=artifacts,
-        error=None,
-        step="completed",
-    )
-    return result
+    return await _complete_job(job_id, store, result)
 
 
 @activity.defn(name="run_competitor_research_activity")
@@ -469,40 +337,13 @@ async def run_competitor_research_activity(job_id: str) -> dict[str, Any]:
         )
         raise RuntimeError("invalid competitor-research input")
 
-    loop = asyncio.get_running_loop()
-
-    def set_step(name: str) -> None:
-        fut = asyncio.run_coroutine_threadsafe(store.set_step(job_id, name), loop)
-        try:
-            fut.result(timeout=15)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("set_step failed: %s", exc)
-
-    on_step = make_on_step_complete(
-        set_step=set_step,
-        heartbeat=lambda label: activity.heartbeat(label),
+    result = await _run_pipeline_thread(
+        run_competitor_research_pipeline,
+        job_id=job_id,
+        store=store,
+        label="competitor-research",
+        product_name=product_name,
+        product_url=product_url,
+        settings=settings,
     )
-
-    try:
-        result = await asyncio.to_thread(
-            run_competitor_research_pipeline,
-            job_id=job_id,
-            product_name=product_name,
-            product_url=product_url,
-            on_step_complete=on_step,
-            settings=settings,
-        )
-    except Exception as exc:  # noqa: BLE001
-        log.exception("competitor-research pipeline failed job_id=%s", job_id)
-        await store.set_status(job_id, JobStatus.FAILED, error=str(exc)[:2000])
-        raise
-
-    artifacts = [Artifact.model_validate(a) for a in result.get("artifacts") or []]
-    await store.update(
-        job_id,
-        status=JobStatus.COMPLETED,
-        artifacts=artifacts,
-        error=None,
-        step="completed",
-    )
-    return result
+    return await _complete_job(job_id, store, result)

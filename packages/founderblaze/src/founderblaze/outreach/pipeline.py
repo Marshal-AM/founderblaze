@@ -14,7 +14,6 @@ from founderblaze.core.storage.b2 import (
     resolve_download_url,
 )
 from founderblaze.core.storage.provenance import (
-    finalize_chart_provenance,
     finalize_run_provenance,
     merge_provenance,
     pick_primary_local_path,
@@ -169,11 +168,6 @@ def run_outreach_pipeline(
         mode="sidecar",
         upload_sidecar=upload_to_b2,
     )
-    chart_artifacts = (
-        finalize_chart_provenance(result, sink=sink, settings=settings, upload=True)
-        if upload_to_b2 and sink is not None
-        else []
-    )
     primary = merge_provenance(
         {
             "type": "pdf_report",
@@ -194,7 +188,7 @@ def run_outreach_pipeline(
     return {
         "job_id": job_id,
         "status": "completed",
-        "artifacts": [primary, *chart_artifacts],
+        "artifacts": [primary],
         "manifest_hash": prov.get("canonical_hash"),
         "run_id": result.run.run_id,
         "work_dir": work,

@@ -144,14 +144,13 @@ class VisualInsightsProvider(SyncProvider):
                 continue
             asset = tmp.assets[0]
             path = local_path(str(getattr(getattr(asset, "url", None), "url", None) or asset.url or ""))
-            data_uri = _file_to_data_uri(path) if path else None
+            # Paths only in assets/JSON — report builds data URIs for PDF embed.
             meta = dict(getattr(asset, "metadata", None) or {})
             meta.update(
                 {
                     "kind": kind,
                     "chart_id": chart_id,
                     "prompt": prompt,
-                    "data_uri": data_uri,
                     "local_path": str(path) if path else None,
                 }
             )
@@ -165,7 +164,7 @@ class VisualInsightsProvider(SyncProvider):
                         metadata={
                             "kind": kind,
                             "chart_id": chart_id,
-                            "data_uri": data_uri,
+                            "local_path": str(path),
                             "embed": True,
                         },
                     )
@@ -176,7 +175,6 @@ class VisualInsightsProvider(SyncProvider):
                     "kind": kind,
                     "ok": True,
                     "path": str(path) if path else None,
-                    "data_uri": data_uri,
                     "prompt": prompt,
                 }
             )
