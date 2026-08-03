@@ -144,7 +144,7 @@ export const SERVICE_FORMS: ServiceFormDef[] = [
       },
     ],
     buildPrompt: (v) =>
-      `Please run investor outreach using website ${v.website_url} and this revenue spreadsheet: ${v.sheet_url}`,
+      `Please run investor outreach using website ${v.website_url} and this financials spreadsheet: ${v.sheet_url}`,
   },
   {
     id: "social-listening",
