@@ -36,8 +36,9 @@ This is not a template library. **This is an ENTIRE collection of non-engineerin
 
 | Resource | Link |
 |----------|------|
-| **Demo Video** | |
-| **Live product URL** | |
+| **Demo Video** | [youtube.com/watch?v=PY1o5AtN3o4](https://www.youtube.com/watch?v=PY1o5AtN3o4) |
+| **Landing page** | [founderblaze.vercel.app](https://founderblaze.vercel.app) |
+| **Live app** | [founderblaze.up.railway.app](https://founderblaze.up.railway.app) |
 
 ---
 
