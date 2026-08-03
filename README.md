@@ -1,6 +1,6 @@
 ﻿# FounderBlaze
 
-> **An entire company — distilled into eight AI services.**
+> **Solo Founders don't need a team. They need 8 Agentic Services**
 
 FounderBlaze is an **application** where solo founders chat with an **entrypoint AI agent** that analyzes the request and **delegates** to specialized multi-agent pipelines — promo videos, product demos, competitor reports, investor outreach packs, Reddit engagement playbooks, production-ready brand kits, desktop/mobile UI appkit packs, and investor pitch decks. Pipelines run on **Genblaze**, deliverables land on **Backblaze B2**, and the same catalog is exposed over **A2MCP** jobs plus a real **MCP** tool server.
 
@@ -79,7 +79,7 @@ That gap is exactly what FounderBlaze exists to close.
 
 ## The Solution — FounderBlaze
 
-**FounderBlaze is an entire company for solo founders — an app plus an entrypoint AI agent that routes work to eight specialized multi-agent services.**
+**FounderBlaze is an entire non-tech team for Solo Founders — an app plus an entrypoint AI agent that routes work to eight specialized multi-agent services.**
 
 From your product URL to a polished promo video. From a natural-language script to a narrated screen recording of your live app. From a brand name and a two-sentence brief to a downloadable ZIP of logos, fonts, colors, and social banners. From a product name and idea to desktop + mobile UI mock screens styled to that brand. From a product URL and funding ask to a 6–8 page investor pitch deck PDF matched to your design language. From your website and revenue spreadsheet to an investor intelligence report with verified contacts. From your product category to a five-competitor analysis with SWOT, pricing matrices, and positioning maps. From your landing page to a curated list of Reddit threads with draft responses ready to post.
 
