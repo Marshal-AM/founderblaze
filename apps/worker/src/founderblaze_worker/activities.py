@@ -397,12 +397,12 @@ async def run_promo_video_activity(job_id: str) -> dict[str, Any]:
     await store.set_step(job_id, "starting")
 
     product_url = str(job.input.get("product_url") or "")
-    duration = job.input.get("duration", 10)
+    duration = job.input.get("duration", 8)
     resolution = str(job.input.get("resolution") or "720p")
     try:
         duration_i = int(duration)
     except (TypeError, ValueError):
-        duration_i = 10
+        duration_i = 8
     if not product_url:
         await store.set_status(
             job_id, JobStatus.FAILED, error="missing product_url"

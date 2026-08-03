@@ -64,7 +64,12 @@ class ScriptProvider(SyncProvider):
                 "You are an elite advertising creative director — the kind who makes "
                 "people say \"wait, play that again\" — not a product-demo narrator. "
                 "Return JSON only matching the requested schema. No markdown fences. "
-                "Generic SaaS-ad energy is a failure state."
+                "Generic SaaS-ad energy is a failure state. "
+                f"HARD TIMEBOX: the full voiceover and shot list must fit EXACTLY "
+                f"{duration} seconds — speakable end-to-end at a fast trailer pace "
+                f"with no cut-for-time lines. Prefer punchy, sparse VO "
+                f"(about {max(8, int(duration * 2.5))}–{int(duration * 3)} words total) "
+                "so every syllable lands inside the clock."
             ),
         )
         seedance_prompt = str(
@@ -120,6 +125,8 @@ def _build_script_prompt(
     Screenshots → grounded product brief (no browser capture in this stack).
     """
     catalog = json.dumps(brief, indent=2, default=str)
+    vo_min = max(8, int(duration * 2.5))
+    vo_max = int(duration * 3)
 
     return f"""You are an elite advertising creative director — the kind who makes people say
 "wait, play that again" — not a product-demo narrator. You've been hired to
@@ -130,6 +137,7 @@ funny, emotional, or weird, never a screen-recording with a voiceover on top).
 PRODUCT URL: {url}
 TARGET RESOLUTION: {resolution}
 ASPECT RATIO: {aspect_ratio}
+SPOT LENGTH: EXACTLY {duration} seconds (this is a short spot — write for the clock)
 
 You have a GROUNDED PRODUCT BRIEF researched from the live web about this product.
 These facts are your only source of truth for what the product is and does —
@@ -183,14 +191,17 @@ HARD CONSTRAINTS
 ═══════════════════════════════════════════════════════════════════
 - Duration: EXACTLY {duration} seconds. Not "about" — exactly.
 - Voiceover must be spoken in FULL within {duration}s at a fast, punchy,
-  trailer-paced read (~2.5-3 words/second is a safe budget for energetic VO —
-  count your words and check the math before finalizing). No dead air, no
-  wasted beats, no line you write that gets cut for time.
+  trailer-paced read. Target about {vo_min}–{vo_max} words TOTAL (~2.5–3 words/second).
+  Count the words in "voiceover" before finalizing. If it is longer than {vo_max}
+  words, cut until it fits — no dead air, no wasted beats, no line that would
+  get truncated for time. Prefer short clauses over compound sentences.
 - At least one shot_type "product_proof" must appear, grounded in a real detail
   from the brief. Never invent UI that isn't supported by the brief.
 - Every shot in the shot list must have a start_s/end_s that fits inside
   [0, {duration}], shots must be contiguous and non-overlapping, and the
   final shot's end_s must equal {duration} exactly.
+- Prefer 3–5 shots max for a {duration}s spot so each beat has room to land;
+  do not pack a 15-second structure into {duration} seconds.
 - End on a clear, deliberate BRAND/PRODUCT ENDCARD moment — name, logo-style
   treatment, or a final line that unmistakably identifies the product. This
   is the last thing viewers see; don't let it get crowded out.
@@ -231,7 +242,8 @@ CREATIVE DIRECTION — HOW TO ACTUALLY MAKE IT GOOD
   brief) rather than defaulting to generic "startup enthusiasm."
 - PACING: vary shot length deliberately — quick cuts for energy/chaos beats,
   one longer held shot for the emotional or reveal beat. Uniform 2-second
-  shots all the way through reads as lazy, not punchy.
+  shots all the way through reads as lazy, not punchy. For a {duration}s spot,
+  every second must earn its place.
 
 ═══════════════════════════════════════════════════════════════════
 seedance_prompt REQUIREMENTS
@@ -245,7 +257,7 @@ ByteDance Seedance 2.0, including:
   are product-proof beats grounded in brief facts
 - The full VO text, broken into per-shot slices matching the shot list,
   with pacing/delivery notes (e.g. "fast, deadpan," "building energy," "warm,
-  slows down here")
+  slows down here") — total spoken VO must fit inside {duration}s
 - Explicit music/SFX direction as described above — specific personality,
   not corporate-generic, including where the music hits a beat/drop/turn
 - An instruction block telling Seedance to generate synced dialogue/VO audio
@@ -267,7 +279,7 @@ OUTPUT — return JSON matching exactly this shape:
   "concept": "short concept title + one-line premise (the big idea, stated sharply)",
   "big_idea": "1-3 sentences explaining the metaphor/hook/emotional core and why it fits this specific product",
   "tone": "tone keywords",
-  "voiceover": "full spoken script as one string, exactly as it will be read",
+  "voiceover": "full spoken script as one string, exactly as it will be read — must fit {duration}s ({vo_min}–{vo_max} words)",
   "shot_list": [
     {{
       "start_s": 0,
@@ -282,11 +294,12 @@ OUTPUT — return JSON matching exactly this shape:
 }}
 
 Before returning, self-check:
-1. Does the VO word count actually fit {duration}s at a fast trailer pace? Recount if unsure.
+1. Does the VO word count fall in {vo_min}–{vo_max} and fit {duration}s at a fast trailer pace? Recount if unsure. Cut if over.
 2. Do shots cover [0, {duration}] exactly, contiguous, no gaps or overlaps?
 3. Is the big idea specific to THIS product, or could it be pasted onto any SaaS site? If the latter, rewrite it.
 4. Is there at least one product_proof beat grounded in the brief (not invented UI)?
 5. Does it end on an unmistakable brand/product endcard moment?
 6. Does the seedance_prompt include an explicit instruction to Seedance that any
    generated on-screen text must be ONLY in English and proper, error-free English?
+7. Could this whole spot actually be thrown in {duration} seconds without rushing past clarity? If not, simplify.
 """

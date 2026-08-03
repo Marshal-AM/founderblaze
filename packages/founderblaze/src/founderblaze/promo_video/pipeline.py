@@ -36,7 +36,7 @@ def run_promo_video_pipeline(
     *,
     job_id: str,
     product_url: str,
-    duration: int = 10,
+    duration: int = 8,
     resolution: str = "720p",
     on_step_complete: Callable[[Any], None] | None = None,
     settings: Settings | None = None,

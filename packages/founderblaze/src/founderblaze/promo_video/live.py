@@ -16,9 +16,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--duration",
         type=int,
-        default=10,
+        default=8,
         choices=(4, 5, 6, 8, 10, 12, 15),
-        help="Seedance clip length seconds (default 10)",
+        help="Seedance clip length seconds (default 8)",
     )
     parser.add_argument(
         "--resolution",

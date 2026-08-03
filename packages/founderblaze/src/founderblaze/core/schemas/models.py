@@ -83,7 +83,7 @@ class SocialListeningInput(BaseModel):
 class PromoVideoInput(BaseModel):
     product_url: HttpUrl
     # Segmind Seedance 2.0 durations (match TS PromoVideoDurationSchema)
-    duration: Literal[4, 5, 6, 8, 10, 12, 15] = 10
+    duration: Literal[4, 5, 6, 8, 10, 12, 15] = 8
     resolution: Literal["480p", "720p", "1080p", "4k"] = "720p"
 
 
@@ -231,12 +231,12 @@ SERVICE_MANIFESTS: dict[ServiceName, dict[str, Any]] = {
         "sla_minutes": 15,
         "endpoint_path": "/v1/services/promo-video/jobs",
         "summary": "Generates a short cinematic promo video from a product URL via Gemini grounding + Segmind Seedance.",
-        "provide": "product_url (required). Optional: duration (4|5|6|8|10|12|15, default 10), resolution (480p|720p|1080p|4k, default 720p).",
+        "provide": "product_url (required). Optional: duration (4|5|6|8|10|12|15, default 8), resolution (480p|720p|1080p|4k, default 720p).",
         "deliverable": "MP4 promo video (Backblaze URL)",
         "example_request": {
             "input": {
                 "product_url": "https://linear.app",
-                "duration": 10,
+                "duration": 8,
                 "resolution": "720p",
             }
         },
