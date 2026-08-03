@@ -9,8 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from genblaze_core import Modality, ProviderCapabilities, SyncProvider
-from genblaze_google import chat
-
+from founderblaze.core.gemini_retry import chat_with_retry
 from founderblaze.pitch_deck._assets import (
     MAX_SLIDES,
     MIN_SLIDES,
@@ -125,7 +124,7 @@ Return ONLY JSON:
 
         model = step.model or "gemini-2.5-flash"
         log.info("planning pitch deck model=%s product=%s", model, product_name)
-        resp = chat(model, prompt=prompt, api_key=self.api_key or None)
+        resp = chat_with_retry(model, prompt=prompt, api_key=self.api_key or None)
         text = getattr(resp, "text", None) or str(resp)
         plan = _parse_plan(text)
         slides = list(plan.get("slides") or [])

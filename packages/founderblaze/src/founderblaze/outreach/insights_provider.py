@@ -10,6 +10,10 @@ from typing import Any
 
 from genblaze_core import Modality, ProviderCapabilities, SyncProvider
 from genblaze_core.models.step import Step
+from founderblaze.core.gemini_retry import (
+    call_with_transient_retry,
+    gemini_image_retry_policy,
+)
 from genblaze_google import GeminiImageProvider
 
 from founderblaze.outreach._assets import (
@@ -88,6 +92,7 @@ class VisualInsightsProvider(SyncProvider):
         image_provider = GeminiImageProvider(
             api_key=self.api_key or None,
             output_dir=img_dir,
+            retry_policy=gemini_image_retry_policy(),
         )
         charts_meta: list[dict[str, Any]] = []
 
@@ -105,7 +110,9 @@ class VisualInsightsProvider(SyncProvider):
                 prompt=prompt,
             )
             try:
-                image_provider.generate(tmp, config)
+                call_with_transient_retry(
+                    lambda tmp=tmp, cfg=config: image_provider.generate(tmp, cfg)
+                )
             except Exception as exc:  # noqa: BLE001
                 log.warning("outreach chart failed id=%s: %s", chart_id, exc)
                 charts_meta.append(

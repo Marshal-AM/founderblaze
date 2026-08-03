@@ -10,6 +10,7 @@ from typing import Any
 from genblaze_core import Modality, ProviderCapabilities, SyncProvider
 
 from founderblaze.brand_kit._imaging import crop_cover
+from founderblaze.core.gemini_retry import generate_content_with_retry
 from founderblaze.pitch_deck._assets import (
     assert_slide_count,
     asset_json,
@@ -138,15 +139,17 @@ class SlidesProvider(SyncProvider):
                     genai_types.Part.from_bytes(data=img_bytes, mime_type=mime)
                 )
 
-            resp = client.models.generate_content(
-                model=model,
-                contents=parts,
-                config=genai_types.GenerateContentConfig(
-                    response_modalities=["TEXT", "IMAGE"],
-                    image_config=genai_types.ImageConfig(
-                        aspect_ratio=SLIDE_ASPECT_RATIO
+            resp = generate_content_with_retry(
+                lambda parts=parts, model=model: client.models.generate_content(
+                    model=model,
+                    contents=parts,
+                    config=genai_types.GenerateContentConfig(
+                        response_modalities=["TEXT", "IMAGE"],
+                        image_config=genai_types.ImageConfig(
+                            aspect_ratio=SLIDE_ASPECT_RATIO
+                        ),
                     ),
-                ),
+                )
             )
             png = _extract_image_bytes(resp)
             if not png:

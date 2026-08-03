@@ -175,8 +175,10 @@ export function ChatWorkspace({
             );
             onHistoryChanged();
           }
-        } catch {
-          /* ignore */
+        } catch (err) {
+          const msg =
+            err instanceof Error ? err.message : "Failed to refresh job status";
+          setError((prev) => prev || msg);
         }
       }
     };

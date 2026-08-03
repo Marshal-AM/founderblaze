@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from genblaze_core import Asset, Modality, ProviderCapabilities, SyncProvider
-from genblaze_google import chat
+from founderblaze.core.gemini_retry import chat_with_retry
 
 log = logging.getLogger("founderblaze.apd.plan")
 
@@ -60,7 +60,7 @@ Return JSON matching: {{ "steps": [ {{ "id": number, "instruction": string, "nar
 
         model = step.model or "gemini-2.0-flash"
         log.info("planning with Gemini model=%s", model)
-        resp = chat(model, prompt=prompt)
+        resp = chat_with_retry(model, prompt=prompt)
         text = getattr(resp, "text", None) or str(resp)
         plan = _parse_plan_json(text)
 

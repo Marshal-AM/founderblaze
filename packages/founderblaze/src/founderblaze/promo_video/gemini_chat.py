@@ -6,7 +6,7 @@ import os
 import re
 from typing import Any
 
-from genblaze_google import chat
+from founderblaze.core.gemini_retry import chat_with_retry, generate_content_with_retry
 
 log = logging.getLogger("founderblaze.promo_video.gemini")
 
@@ -30,7 +30,7 @@ def gemini_text(
     if system:
         full = f"{system.strip()}\n\n---\n\n{prompt.strip()}"
     log.info("gemini chat model=%s chars=%s", model, len(full))
-    resp = chat(model, prompt=full, api_key=api_key)
+    resp = chat_with_retry(model, prompt=full, api_key=api_key)
     text = getattr(resp, "text", None) or str(resp)
     return (text or "").strip()
 
@@ -62,7 +62,7 @@ def gemini_grounded_text(
         full = f"{system.strip()}\n\n---\n\n{prompt.strip()}"
     log.info("gemini grounded chat model=%s chars=%s", model, len(full))
     try:
-        resp = chat(model, prompt=full, api_key=api_key, tools=tools)
+        resp = chat_with_retry(model, prompt=full, api_key=api_key, tools=tools)
         text = getattr(resp, "text", None) or str(resp)
         return (text or "").strip()
     except Exception as exc:  # noqa: BLE001
@@ -91,13 +91,16 @@ def _grounded_via_client(prompt: str, *, model: str, api_key: str | None) -> str
     key = (api_key or os.environ.get("GEMINI_API_KEY") or "").strip()
     client = genai.Client(api_key=key) if key else genai.Client()
     try:
-        resp = client.models.generate_content(
-            model=model,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())],
-            ),
-        )
+        def _once() -> Any:
+            return client.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    tools=[types.Tool(google_search=types.GoogleSearch())],
+                ),
+            )
+
+        resp = generate_content_with_retry(_once)
         text = getattr(resp, "text", None) or ""
         return (text or "").strip()
     finally:

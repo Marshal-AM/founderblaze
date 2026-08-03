@@ -9,9 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from genblaze_core import Modality, ProviderCapabilities, SyncProvider
-from genblaze_google import chat
-
 from founderblaze.app_kit._assets import json_file_asset
+from founderblaze.core.gemini_retry import chat_with_retry
 
 log = logging.getLogger("founderblaze.app_kit.plan")
 
@@ -80,7 +79,7 @@ Return ONLY JSON:
 
         model = step.model or "gemini-2.5-flash"
         log.info("planning app screens model=%s product=%s", model, self.product_name)
-        resp = chat(model, prompt=prompt, api_key=self.api_key or None)
+        resp = chat_with_retry(model, prompt=prompt, api_key=self.api_key or None)
         text = getattr(resp, "text", None) or str(resp)
         plan = _parse_plan(text)
         work = Path(self.work_dir or tempfile.mkdtemp(prefix="app-kit-plan-"))

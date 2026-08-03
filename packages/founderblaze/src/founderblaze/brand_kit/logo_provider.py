@@ -11,6 +11,10 @@ from genblaze_core import Modality, ProviderCapabilities, SyncProvider
 from genblaze_google import GeminiImageProvider
 
 from founderblaze.brand_kit._imaging import asset_json, json_file_asset, wait_between_steps
+from founderblaze.core.gemini_retry import (
+    call_with_transient_retry,
+    gemini_image_retry_policy,
+)
 
 log = logging.getLogger("founderblaze.brand_kit.logos")
 
@@ -56,6 +60,7 @@ class LogoConceptsProvider(SyncProvider):
         image_provider = GeminiImageProvider(
             api_key=self.api_key or None,
             output_dir=out_dir,
+            retry_policy=gemini_image_retry_policy(),
         )
 
         concept_meta: list[dict[str, Any]] = []
@@ -74,7 +79,9 @@ class LogoConceptsProvider(SyncProvider):
                 modality=Modality.IMAGE,
                 prompt=prompt,
             )
-            image_provider.generate(tmp, config)
+            call_with_transient_retry(
+                lambda tmp=tmp, cfg=config: image_provider.generate(tmp, cfg)
+            )
             if not tmp.assets:
                 raise RuntimeError(f"no image for logo concept {angle.get('id')}")
             asset = tmp.assets[0]

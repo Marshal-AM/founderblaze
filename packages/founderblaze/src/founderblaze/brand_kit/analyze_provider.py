@@ -9,8 +9,6 @@ from pathlib import Path
 from typing import Any
 
 from genblaze_core import Modality, ProviderCapabilities, SyncProvider
-from genblaze_google import chat
-
 from founderblaze.brand_kit._fonts_catalog import (
     BODY_FONTS,
     HEADING_FONTS,
@@ -18,6 +16,7 @@ from founderblaze.brand_kit._fonts_catalog import (
     canonicalize_heading_font,
 )
 from founderblaze.brand_kit._imaging import json_file_asset
+from founderblaze.core.gemini_retry import chat_with_retry
 
 log = logging.getLogger("founderblaze.brand_kit.analyze")
 
@@ -80,7 +79,7 @@ Return ONLY JSON:
 
         model = step.model or "gemini-2.0-flash"
         log.info("analyzing brand brief model=%s", model)
-        resp = chat(model, prompt=prompt)
+        resp = chat_with_retry(model, prompt=prompt)
         text = getattr(resp, "text", None) or str(resp)
         analysis = _parse_analysis(text, count=self.concept_count)
         work = Path(self.work_dir or tempfile.mkdtemp(prefix="brand-kit-analyze-"))

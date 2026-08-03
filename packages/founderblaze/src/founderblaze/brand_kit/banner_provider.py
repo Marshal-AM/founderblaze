@@ -17,6 +17,7 @@ from founderblaze.brand_kit._imaging import (
     read_asset_bytes,
     wait_between_steps,
 )
+from founderblaze.core.gemini_retry import generate_content_with_retry
 
 log = logging.getLogger("founderblaze.brand_kit.banners")
 
@@ -151,27 +152,31 @@ class BannerProvider(SyncProvider):
                 typography=typography,
             )
             log.info("generating banner=%s model=%s", banner["name"], model)
-            response = client.models.generate_content(
-                model=model,
-                contents=[
-                    genai_types.Content(
-                        role="user",
-                        parts=[
-                            genai_types.Part.from_text(text=prompt),
-                            genai_types.Part.from_bytes(
-                                data=logo_bytes,
-                                mime_type=mime,
-                            ),
-                        ],
-                    )
-                ],
-                config=genai_types.GenerateContentConfig(
-                    response_modalities=["TEXT", "IMAGE"],
-                    image_config=genai_types.ImageConfig(
-                        aspect_ratio=banner["aspect_ratio"]
+
+            def _once() -> Any:
+                return client.models.generate_content(
+                    model=model,
+                    contents=[
+                        genai_types.Content(
+                            role="user",
+                            parts=[
+                                genai_types.Part.from_text(text=prompt),
+                                genai_types.Part.from_bytes(
+                                    data=logo_bytes,
+                                    mime_type=mime,
+                                ),
+                            ],
+                        )
+                    ],
+                    config=genai_types.GenerateContentConfig(
+                        response_modalities=["TEXT", "IMAGE"],
+                        image_config=genai_types.ImageConfig(
+                            aspect_ratio=banner["aspect_ratio"]
+                        ),
                     ),
-                ),
-            )
+                )
+
+            response = generate_content_with_retry(_once)
             raw = _extract_inline_image(response)
             if not raw:
                 raise RuntimeError(f"no banner image for {banner['name']}")

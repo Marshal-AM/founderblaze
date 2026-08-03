@@ -11,10 +11,10 @@ from typing import Any
 
 import httpx
 from genblaze_core import Modality, ProviderCapabilities, SyncProvider
-from genblaze_google import chat
 from PIL import Image
 
 from founderblaze.app_kit._assets import asset_json, file_asset, json_file_asset
+from founderblaze.core.gemini_retry import chat_with_retry
 
 log = logging.getLogger("founderblaze.app_kit.brand_context")
 
@@ -223,7 +223,7 @@ Return ONLY JSON (no example.com placeholder brands):
   "voice": "one sentence visual/product tone for UI screens"
 }}"""
         log.info("inventing brand context model=%s", model)
-        resp = chat(model, prompt=prompt, api_key=self.api_key or None)
+        resp = chat_with_retry(model, prompt=prompt, api_key=self.api_key or None)
         text = getattr(resp, "text", None) or str(resp)
         data = _parse_json_object(text)
         palette = data.get("palette") if isinstance(data.get("palette"), dict) else {}

@@ -15,6 +15,7 @@ from founderblaze.app_kit._assets import (
     read_asset_bytes,
     wait_between_steps,
 )
+from founderblaze.core.gemini_retry import generate_content_with_retry
 
 log = logging.getLogger("founderblaze.app_kit.screens")
 
@@ -124,12 +125,14 @@ class ScreensProvider(SyncProvider):
                         genai_types.Part.from_bytes(data=img_bytes, mime_type=mime)
                     )
 
-                resp = client.models.generate_content(
-                    model=model,
-                    contents=parts,
-                    config=genai_types.GenerateContentConfig(
-                        response_modalities=["TEXT", "IMAGE"],
-                    ),
+                resp = generate_content_with_retry(
+                    lambda parts=parts, model=model: client.models.generate_content(
+                        model=model,
+                        contents=parts,
+                        config=genai_types.GenerateContentConfig(
+                            response_modalities=["TEXT", "IMAGE"],
+                        ),
+                    )
                 )
                 png = _extract_image_bytes(resp)
                 if not png:

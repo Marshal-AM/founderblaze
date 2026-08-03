@@ -8,7 +8,7 @@ import uuid
 from typing import Any
 from urllib.parse import urlparse
 
-from genblaze_google import chat
+from founderblaze.core.gemini_retry import chat_with_retry
 
 from founderblaze.a2mcp.tools import (
     list_service_tools,
@@ -288,7 +288,7 @@ async def run_agent(
     prompt_bits.append(f"USER: {message}")
     prompt = "\n\n".join(prompt_bits)
 
-    resp = chat(
+    resp = chat_with_retry(
         model,
         prompt=prompt,
         system=_SYSTEM,
@@ -396,7 +396,7 @@ async def run_agent(
         + "\n\n".join(tool_results + [f"BLOCKED: {b}" for b in blocked_replies])
         + "\n\nASSISTANT: Summarize for the user. If something was blocked, ask only for the missing real inputs. Include artifact URLs if any."
     )
-    resp2 = chat(
+    resp2 = chat_with_retry(
         model,
         prompt=follow,
         system=_SYSTEM,

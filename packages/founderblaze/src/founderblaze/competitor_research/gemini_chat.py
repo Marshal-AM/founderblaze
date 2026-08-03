@@ -6,7 +6,7 @@ import os
 import re
 from typing import Any
 
-from genblaze_google import chat
+from founderblaze.core.gemini_retry import chat_with_retry
 
 log = logging.getLogger("founderblaze.competitor_research.gemini")
 
@@ -24,7 +24,7 @@ def gemini_text(
     if system:
         full = f"{system.strip()}\n\n---\n\n{prompt.strip()}"
     log.info("gemini chat model=%s chars=%s", model, len(full))
-    resp = chat(model, prompt=full, api_key=api_key)
+    resp = chat_with_retry(model, prompt=full, api_key=api_key)
     text = getattr(resp, "text", None) or str(resp)
     return (text or "").strip()
 
