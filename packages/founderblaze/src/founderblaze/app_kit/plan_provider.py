@@ -14,6 +14,9 @@ from founderblaze.core.gemini_retry import chat_with_retry
 
 log = logging.getLogger("founderblaze.app_kit.plan")
 
+MAX_SCREENS = 6
+MIN_SCREENS = 4
+
 
 class PlanScreensProvider(SyncProvider):
     """Gemini TEXT: information architecture + ordered screen list for the app."""
@@ -48,16 +51,18 @@ Product idea:
 \"\"\"{self.product_idea}\"\"\"
 
 Design a COMPLETE mini information architecture for this product — not a single generic screen.
-Include typically 6–10 screens covering onboarding/auth, core loops, detail views, account/settings,
-and at least one empty or error state when it fits the product.
+The same screens will appear on TWO UI kit boards (one phone board, one desktop board).
+Include typically {MAX_SCREENS} screens (minimum {MIN_SCREENS}) covering onboarding/auth, core loops,
+detail views, account/settings, and at least one empty or error state when it fits the product.
 
 Rules:
+- Plan screens that work for BOTH phone and desktop (same ids/titles; layouts differ per board).
 - Every screen must be specific to THIS product (names, entities, primary actions).
 - id: short kebab-case unique id (e.g. "home", "session-player", "settings").
 - title: human label for the screen.
 - purpose: one sentence why the screen exists.
 - key_ui: 3–6 concrete UI elements/sections that must appear.
-- nav: how users reach this screen (e.g. "bottom tab Home", "stack from home card").
+- nav: how users reach this screen (e.g. "bottom tab Home", "sidebar Home").
 
 Return ONLY JSON:
 {{
@@ -115,11 +120,11 @@ def _parse_plan(text: str) -> dict[str, Any]:
         data = json.loads(raw[start : end + 1])
 
     screens = data.get("screens") or []
-    if not isinstance(screens, list) or len(screens) < 4:
-        raise RuntimeError("plan must include at least 4 screens")
+    if not isinstance(screens, list) or len(screens) < MIN_SCREENS:
+        raise RuntimeError(f"plan must include at least {MIN_SCREENS} screens")
     cleaned: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for i, s in enumerate(screens[:12]):
+    for i, s in enumerate(screens[:MAX_SCREENS]):
         if not isinstance(s, dict):
             continue
         sid = re.sub(r"[^a-z0-9-]+", "-", str(s.get("id") or f"screen-{i}").lower()).strip("-")
@@ -138,15 +143,23 @@ def _parse_plan(text: str) -> dict[str, Any]:
                 "nav": str(s.get("nav") or ""),
             }
         )
-    if len(cleaned) < 4:
-        raise RuntimeError("plan produced fewer than 4 valid screens")
+    if len(cleaned) < MIN_SCREENS:
+        raise RuntimeError(f"plan produced fewer than {MIN_SCREENS} valid screens")
     return {
         "app_type": str(data.get("app_type") or "product app"),
-        "nav_pattern": data.get("nav_pattern")
-        if isinstance(data.get("nav_pattern"), dict)
-        else {
-            "desktop": "left sidebar + top bar",
-            "mobile": "bottom tabs + stack",
-        },
+        "nav_pattern": _normalize_nav_pattern(data.get("nav_pattern")),
         "screens": cleaned,
     }
+
+
+def _normalize_nav_pattern(raw: Any) -> dict[str, str]:
+    mobile = "bottom tabs + stack"
+    desktop = "left sidebar + top bar"
+    if isinstance(raw, dict):
+        m = str(raw.get("mobile") or "").strip()
+        d = str(raw.get("desktop") or "").strip()
+        if m:
+            mobile = m
+        if d:
+            desktop = d
+    return {"mobile": mobile, "desktop": desktop}

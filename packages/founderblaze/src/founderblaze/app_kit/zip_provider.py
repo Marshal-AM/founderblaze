@@ -20,7 +20,7 @@ log = logging.getLogger("founderblaze.app_kit.zip")
 
 
 class ZipProvider(SyncProvider):
-    """Pack desktop/ + mobile/ UI mocks (+ brand refs) into app_kit_zip."""
+    """Pack mobile/ + desktop/ UI kit boards (+ brand refs) into app_kit_zip."""
 
     name = "app-kit-zip"
 
@@ -70,10 +70,11 @@ class ZipProvider(SyncProvider):
                 if kind == "ui_mock":
                     mocks.append(
                         {
-                            "screen_id": meta.get("screen_id"),
                             "viewport": meta.get("viewport"),
                             "title": meta.get("title"),
                             "path": zip_path,
+                            "screen_ids": meta.get("screen_ids"),
+                            "screen_count": meta.get("screen_count"),
                         }
                     )
 
@@ -101,11 +102,11 @@ class ZipProvider(SyncProvider):
             (
                 "README.txt",
                 (
-                    f"App Kit UI mocks for {self.product_name}\n\n"
-                    f"desktop/ — wide web layouts\n"
-                    f"mobile/  — phone layouts\n"
-                    f"brand/   — brand references used (when provided)\n"
-                    f"manifest.json — screen plan + file index\n"
+                    f"App Kit UI boards for {self.product_name}\n\n"
+                    f"mobile/ui-kit-board.png  — all phone screens on one board\n"
+                    f"desktop/ui-kit-board.png — all desktop screens on one board\n"
+                    f"brand/                  — brand references used (when provided)\n"
+                    f"manifest.json           — screen plan + file index\n"
                 ).encode("utf-8"),
             )
         )

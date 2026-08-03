@@ -278,14 +278,17 @@ SERVICE_MANIFESTS: dict[ServiceName, dict[str, Any]] = {
         "sla_minutes": 25,
         "endpoint_path": "/v1/services/app-kit/jobs",
         "summary": (
-            "Plans a product IA and generates beautiful desktop + mobile UI mock "
-            "screens as a downloadable ZIP."
+            "Plans a product IA and generates two multi-screen UI kit boards "
+            "(mobile + desktop) as a downloadable ZIP."
         ),
         "provide": (
             "product_name and product_idea (required). Optional: brand_kit_url "
             "(downloadable brand-kit ZIP to style screens)."
         ),
-        "deliverable": "ZIP of desktop/ and mobile/ UI mock PNGs (Backblaze URL)",
+        "deliverable": (
+            "ZIP with mobile/ui-kit-board.png and desktop/ui-kit-board.png "
+            "(Backblaze URL)"
+        ),
         "example_request": {
             "input": {
                 "product_name": "Solace",
@@ -299,7 +302,7 @@ SERVICE_MANIFESTS: dict[ServiceName, dict[str, Any]] = {
             {
                 "type": "app_kit_zip",
                 "mime_type": "application/zip",
-                "description": "Desktop + mobile UI mock ZIP",
+                "description": "Mobile + desktop UI kit board ZIP",
             }
         ],
     },

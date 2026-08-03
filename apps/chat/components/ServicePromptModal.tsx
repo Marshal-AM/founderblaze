@@ -82,7 +82,7 @@ export const SERVICE_FORMS: ServiceFormDef[] = [
   {
     id: "app-kit",
     label: "App Kit",
-    blurb: "Desktop and mobile UI mock screens.",
+    blurb: "Two UI kit boards — mobile and desktop screens.",
     fields: [
       {
         key: "product_name",
